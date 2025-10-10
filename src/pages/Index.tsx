@@ -70,7 +70,8 @@ const Index = () => {
         description: `Scraped ${data.articlesScraped} articles`,
       });
       
-      // Refresh articles after scraping
+      // Clear search query and refresh articles after scraping
+      setSearchQuery("");
       await fetchArticles();
     } catch (error) {
       console.error("Error scraping news:", error);
