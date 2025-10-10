@@ -5,105 +5,141 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface NewsSource {
-  name: string;
-  url: string;
-  country: string;
+// Using Google News RSS feeds for different regions
+const GOOGLE_NEWS_RSS_BASE = 'https://news.google.com/rss';
+
+interface RegionConfig {
   region: string;
+  countries: { code: string; name: string }[];
 }
 
-const newsSources: NewsSource[] = [
-  // Africa
-  { name: 'Al Jazeera', url: 'https://www.aljazeera.com', country: 'QA', region: 'Africa' },
-  { name: 'Mail & Guardian', url: 'https://mg.co.za', country: 'ZA', region: 'Africa' },
-  { name: 'The Guardian Nigeria', url: 'https://guardian.ng', country: 'NG', region: 'Africa' },
-  
-  // Asia
-  { name: 'South China Morning Post', url: 'https://www.scmp.com', country: 'HK', region: 'Asia' },
-  { name: 'The Times of India', url: 'https://timesofindia.indiatimes.com', country: 'IN', region: 'Asia' },
-  { name: 'The Straits Times', url: 'https://www.straitstimes.com', country: 'SG', region: 'Asia' },
-  
-  // Europe
-  { name: 'BBC News', url: 'https://www.bbc.com/news', country: 'GB', region: 'Europe' },
-  { name: 'Le Monde', url: 'https://www.lemonde.fr', country: 'FR', region: 'Europe' },
-  { name: 'Der Spiegel', url: 'https://www.spiegel.de', country: 'DE', region: 'Europe' },
-  
-  // North America
-  { name: 'The New York Times', url: 'https://www.nytimes.com', country: 'US', region: 'North America' },
-  { name: 'The Globe and Mail', url: 'https://www.theglobeandmail.com', country: 'CA', region: 'North America' },
-  { name: 'El Universal', url: 'https://www.eluniversal.com.mx', country: 'MX', region: 'North America' },
-  
-  // Oceania
-  { name: 'ABC News Australia', url: 'https://www.abc.net.au/news', country: 'AU', region: 'Oceania' },
-  { name: 'The Sydney Morning Herald', url: 'https://www.smh.com.au', country: 'AU', region: 'Oceania' },
-  { name: 'The New Zealand Herald', url: 'https://www.nzherald.co.nz', country: 'NZ', region: 'Oceania' },
-  
-  // South America
-  { name: 'Folha de S.Paulo', url: 'https://www.folha.uol.com.br', country: 'BR', region: 'South America' },
-  { name: 'Clarín', url: 'https://www.clarin.com', country: 'AR', region: 'South America' },
-  { name: 'El Mercurio', url: 'https://www.elmercurio.com', country: 'CL', region: 'South America' },
+const regionConfigs: RegionConfig[] = [
+  {
+    region: 'Africa',
+    countries: [
+      { code: 'ZA', name: 'South Africa' },
+      { code: 'NG', name: 'Nigeria' },
+      { code: 'EG', name: 'Egypt' },
+      { code: 'KE', name: 'Kenya' },
+    ]
+  },
+  {
+    region: 'Asia',
+    countries: [
+      { code: 'IN', name: 'India' },
+      { code: 'CN', name: 'China' },
+      { code: 'JP', name: 'Japan' },
+      { code: 'SG', name: 'Singapore' },
+    ]
+  },
+  {
+    region: 'Europe',
+    countries: [
+      { code: 'GB', name: 'United Kingdom' },
+      { code: 'FR', name: 'France' },
+      { code: 'DE', name: 'Germany' },
+      { code: 'IT', name: 'Italy' },
+    ]
+  },
+  {
+    region: 'North America',
+    countries: [
+      { code: 'US', name: 'United States' },
+      { code: 'CA', name: 'Canada' },
+      { code: 'MX', name: 'Mexico' },
+    ]
+  },
+  {
+    region: 'Oceania',
+    countries: [
+      { code: 'AU', name: 'Australia' },
+      { code: 'NZ', name: 'New Zealand' },
+    ]
+  },
+  {
+    region: 'South America',
+    countries: [
+      { code: 'BR', name: 'Brazil' },
+      { code: 'AR', name: 'Argentina' },
+      { code: 'CL', name: 'Chile' },
+    ]
+  },
 ];
 
-async function scrapeWebsite(source: NewsSource): Promise<any[]> {
-  try {
-    console.log(`Scraping ${source.name}...`);
-    
-    const response = await fetch(source.url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    if (!response.ok) {
-      console.error(`Failed to fetch ${source.name}: ${response.status}`);
-      return [];
-    }
-
-    const html = await response.text();
-    const articles = parseArticles(html, source);
-    
-    console.log(`Scraped ${articles.length} articles from ${source.name}`);
-    return articles;
-  } catch (error) {
-    console.error(`Error scraping ${source.name}:`, error);
-    return [];
-  }
-}
-
-function parseArticles(html: string, source: NewsSource): any[] {
+async function fetchNewsFromRegion(region: RegionConfig): Promise<any[]> {
   const articles: any[] = [];
   
-  // Simple regex patterns to extract headlines and links
-  const titlePattern = /<h[1-3][^>]*>(.*?)<\/h[1-3]>/gi;
-  const linkPattern = /<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gi;
-  
-  const titles = new Set<string>();
-  let match;
-  
-  // Extract article links with titles
-  while ((match = linkPattern.exec(html)) !== null && articles.length < 20) {
-    const url = match[1];
-    const text = match[2].replace(/<[^>]*>/g, '').trim();
-    
-    // Filter for news-like URLs and meaningful titles
-    if (text.length > 20 && text.length < 200 && 
-        !titles.has(text) &&
-        !url.includes('javascript:') &&
-        (url.startsWith('http') || url.startsWith('/'))) {
+  for (const country of region.countries) {
+    try {
+      console.log(`Fetching news from ${country.name} (${region.region})...`);
       
-      titles.add(text);
+      // Fetch top headlines from Google News RSS for this country
+      const url = `${GOOGLE_NEWS_RSS_BASE}?gl=${country.code}&hl=en&ceid=${country.code}:en`;
       
-      const fullUrl = url.startsWith('http') ? url : `${source.url}${url}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error(`Failed to fetch news for ${country.name}: ${response.status}`);
+        continue;
+      }
       
-      articles.push({
-        title: text,
-        snippet: text.substring(0, 150),
-        url: fullUrl,
-        source_name: source.name,
-        source_country: source.country,
-        source_region: source.region,
-      });
+      const xmlText = await response.text();
+      const parsedArticles = parseRSSFeed(xmlText, country.name, country.code, region.region);
+      
+      articles.push(...parsedArticles);
+      console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`);
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error(`Error fetching news from ${country.name}:`, error);
     }
+  }
+  
+  return articles;
+}
+
+function parseRSSFeed(xml: string, countryName: string, countryCode: string, region: string): any[] {
+  const articles: any[] = [];
+  
+  // Parse RSS items
+  const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
+  
+  for (const itemMatch of itemMatches) {
+    const itemXml = itemMatch[1];
+    
+    // Extract title
+    const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+    if (!titleMatch) continue;
+    const title = titleMatch[1];
+    
+    // Extract link
+    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+    if (!linkMatch) continue;
+    const url = linkMatch[1];
+    
+    // Extract description/snippet
+    const descMatch = itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/);
+    const snippet = descMatch ? descMatch[1].replace(/<[^>]*>/g, '').substring(0, 200) : title.substring(0, 200);
+    
+    // Extract source
+    const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
+    const sourceName = sourceMatch ? sourceMatch[1] : `News from ${countryName}`;
+    
+    // Extract publish date
+    const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
+    const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString();
+    
+    articles.push({
+      title: title.trim(),
+      snippet: snippet.trim(),
+      url: url.trim(),
+      source_name: sourceName.trim(),
+      source_country: countryCode,
+      source_region: region,
+      published_at: publishedAt,
+    });
+    
+    if (articles.length >= 10) break; // Limit per country
   }
   
   return articles;
@@ -120,17 +156,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Starting news scraping...');
+    console.log('Starting news scraping from Google News RSS feeds...');
     
-    // Scrape all sources
+    // Fetch news from all regions
     const allArticles: any[] = [];
     
-    for (const source of newsSources) {
-      const articles = await scrapeWebsite(source);
+    for (const regionConfig of regionConfigs) {
+      const articles = await fetchNewsFromRegion(regionConfig);
       allArticles.push(...articles);
     }
 
-    console.log(`Total articles scraped: ${allArticles.length}`);
+    console.log(`Total articles fetched: ${allArticles.length}`);
 
     // Insert articles into database (ignore duplicates)
     if (allArticles.length > 0) {
