@@ -131,14 +131,29 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
     if (!rawTitle) continue;
     const title = decode(rawTitle);
 
-    // Extract link
-    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
-    if (!linkMatch) continue;
-    let url = linkMatch[1].trim();
-    // If Google News redirect contains url param, prefer the canonical URL
-    const urlParamMatch = url.match(/[?&]url=([^&]+)/);
-    if (urlParamMatch) {
-      try { url = decodeURIComponent(urlParamMatch[1]); } catch {}
+    // Extract actual article URL - Google News RSS provides redirect URLs
+    // First try to get URL from source tag's url attribute (most reliable)
+    const sourceUrlMatch = itemXml.match(/<source[^>]*url="([^"]+)"/);
+    let url = '';
+    
+    if (sourceUrlMatch) {
+      url = decode(sourceUrlMatch[1]);
+    } else {
+      // Fallback to link tag
+      const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+      if (!linkMatch) continue;
+      url = linkMatch[1].trim();
+      
+      // Try to extract canonical URL from Google News redirect
+      const urlParamMatch = url.match(/[?&]url=([^&]+)/);
+      if (urlParamMatch) {
+        try { url = decodeURIComponent(urlParamMatch[1]); } catch {}
+      }
+    }
+    
+    // Skip if still a Google News redirect URL
+    if (!url || url.includes('news.google.com/rss/articles/')) {
+      continue;
     }
 
     // Extract description/snippet (supports CDATA or plain)
