@@ -15,6 +15,20 @@ const decodeEntities = (str: string) => {
     .replace(/&gt;/g, '>');
 };
 
+// Prefer canonical article URL over Google News redirect
+const getDisplayUrl = (input: string) => {
+  if (!input) return input;
+  try {
+    // Try to extract canonical URL from Google News redirect
+    const match = input.match(/[?&]url=([^&]+)/);
+    if (match) {
+      const candidate = decodeURIComponent(match[1]);
+      if (candidate && !candidate.includes('news.google.com')) return candidate;
+    }
+  } catch {}
+  return input;
+};
+
 interface ArticleCardProps {
   title: string;
   snippet: string;
@@ -40,7 +54,7 @@ export const ArticleCard = ({
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-lg leading-tight">
             <a 
-              href={url} 
+              href={getDisplayUrl(url)} 
               target="_blank" 
               rel="noopener noreferrer"
               className="hover:underline flex items-start gap-2"
