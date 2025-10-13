@@ -61,23 +61,63 @@ const Index = () => {
   const handleScrape = async () => {
     setScraping(true);
     try {
-      const { data, error } = await supabase.functions.invoke("scrape-news");
+      // Just fetch headlines without search query
+      const { data, error } = await supabase.functions.invoke("scrape-news", {
+        body: { searchQuery: null, region: selectedRegion === "all" ? null : selectedRegion }
+      });
       
       if (error) throw error;
       
       toast({
-        title: "Success",
-        description: `Scraped ${data.articlesScraped} articles`,
+        title: "Headlines fetched successfully",
+        description: `Fetched ${data.articlesScraped} articles`,
       });
       
-      // Clear search query and refresh articles after scraping
-      setSearchQuery("");
+      // Refresh articles after scraping
       await fetchArticles();
     } catch (error) {
       console.error("Error scraping news:", error);
       toast({
-        title: "Error",
-        description: "Failed to scrape news",
+        title: "Error fetching headlines",
+        description: "Failed to fetch articles",
+        variant: "destructive",
+      });
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  const handleSearchArticles = async () => {
+    if (!searchQuery.trim()) {
+      toast({
+        title: "Enter a search term",
+        description: "Please enter a keyword to search for articles",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setScraping(true);
+    try {
+      // Search for specific articles with the keyword
+      const { data, error } = await supabase.functions.invoke("scrape-news", {
+        body: { searchQuery: searchQuery.trim(), region: selectedRegion === "all" ? null : selectedRegion }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Search completed",
+        description: `Found ${data.articlesScraped} articles about "${searchQuery}"`,
+      });
+      
+      // Refresh articles after scraping
+      await fetchArticles();
+    } catch (error) {
+      console.error("Error searching articles:", error);
+      toast({
+        title: "Error searching articles",
+        description: "Failed to search for articles",
         variant: "destructive",
       });
     } finally {
@@ -91,18 +131,16 @@ const Index = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchArticles();
+    handleSearchArticles();
   };
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-6">
-          <h1 className="text-4xl font-bold mb-2">Global News Aggregator</h1>
-          <p className="text-muted-foreground">
-            Discover how events are reported across different regions
-          </p>
+      <header className="bg-primary text-primary-foreground py-8 px-6">
+        <div className="container mx-auto">
+          <h1 className="text-4xl font-bold mb-2">Latest Now</h1>
+          <p className="text-lg opacity-90">Global news headlines and search</p>
         </div>
       </header>
 
@@ -115,7 +153,7 @@ const Index = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
                   type="text"
-                  placeholder="Search articles..."
+                  placeholder="Search articles by keyword (e.g., Trump, Nepal)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -134,17 +172,11 @@ const Index = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button type="submit" disabled={loading}>
-              Search
+            <Button type="submit" disabled={scraping || !searchQuery.trim()}>
+              {scraping ? "Searching..." : "Search Articles"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleScrape}
-              disabled={scraping}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${scraping ? "animate-spin" : ""}`} />
-              Scrape News
+            <Button onClick={handleScrape} disabled={scraping} variant="secondary">
+              {scraping ? "Fetching..." : "Fetch Headlines"}
             </Button>
           </form>
         </div>
@@ -153,7 +185,7 @@ const Index = () => {
       {/* Articles Grid */}
       <main className="container mx-auto px-4 py-8">
         <h2 className="text-2xl font-semibold mb-6">
-          {searchQuery ? "Search Results" : "Latest Now"}
+          {searchQuery ? `Search Results for "${searchQuery}"` : "Latest Headlines"}
         </h2>
         
         {loading ? (
@@ -163,7 +195,7 @@ const Index = () => {
         ) : articles.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">
-              No articles found. Click "Scrape News" to fetch the latest articles.
+              No articles found. Click "Fetch Headlines" or search for a specific keyword.
             </p>
           </div>
         ) : (

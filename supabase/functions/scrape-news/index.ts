@@ -66,17 +66,27 @@ const regionConfigs: RegionConfig[] = [
   },
 ];
 
-async function fetchNewsFromRegion(region: RegionConfig): Promise<any[]> {
+async function fetchNewsFromRegion(region: RegionConfig, searchQuery?: string): Promise<any[]> {
   const articles: any[] = [];
   
   for (const country of region.countries) {
     try {
       console.log(`Fetching news from ${country.name} (${region.region})...`);
       
-      // Fetch top headlines from Google News RSS for this country
-      const url = `${GOOGLE_NEWS_RSS_BASE}?gl=${country.code}&hl=en&ceid=${country.code}:en`;
+      // Build URL with optional search query
+      let url = `${GOOGLE_NEWS_RSS_BASE}`;
+      if (searchQuery) {
+        url += `/search?q=${encodeURIComponent(searchQuery)}&gl=${country.code}&hl=en&ceid=${country.code}:en`;
+      } else {
+        url += `?gl=${country.code}&hl=en&ceid=${country.code}:en`;
+      }
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
       if (!response.ok) {
         console.error(`Failed to fetch news for ${country.name}: ${response.status}`);
         continue;
@@ -89,7 +99,7 @@ async function fetchNewsFromRegion(region: RegionConfig): Promise<any[]> {
       console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`);
       
       // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
     } catch (error) {
       console.error(`Error fetching news from ${country.name}:`, error);
     }
@@ -156,13 +166,23 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Get request body for search query
+    const { searchQuery, region } = await req.json().catch(() => ({ searchQuery: null, region: null }));
+
     console.log('Starting news scraping from Google News RSS feeds...');
+    if (searchQuery) {
+      console.log(`Search query: "${searchQuery}"`);
+    }
     
-    // Fetch news from all regions
+    // Fetch news from specified region or all regions
     const allArticles: any[] = [];
     
-    for (const regionConfig of regionConfigs) {
-      const articles = await fetchNewsFromRegion(regionConfig);
+    const regionsToSearch = region 
+      ? regionConfigs.filter(r => r.region === region)
+      : regionConfigs;
+    
+    for (const regionConfig of regionsToSearch) {
+      const articles = await fetchNewsFromRegion(regionConfig, searchQuery);
       allArticles.push(...articles);
     }
 
