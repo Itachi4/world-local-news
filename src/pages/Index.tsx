@@ -31,7 +31,7 @@ const Index = () => {
       let query = supabase
         .from("articles")
         .select("*")
-        .order("scraped_at", { ascending: false })
+        .order("published_at", { ascending: false })
         .limit(50);
 
       if (selectedRegion !== "all") {

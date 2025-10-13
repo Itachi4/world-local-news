@@ -2,6 +2,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink } from "lucide-react";
 
+// Decode common HTML entities from feeds
+const decodeEntities = (str: string) => {
+  if (!str) return "";
+  return str
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;|&#x27;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+};
+
 interface ArticleCardProps {
   title: string;
   snippet: string;
@@ -32,7 +45,7 @@ export const ArticleCard = ({
               rel="noopener noreferrer"
               className="hover:underline flex items-start gap-2"
             >
-              <span>{title}</span>
+              <span>{decodeEntities(title)}</span>
               <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1" />
             </a>
           </CardTitle>
@@ -43,7 +56,7 @@ export const ArticleCard = ({
         </div>
       </CardHeader>
       <CardContent>
-        <CardDescription className="line-clamp-3">{snippet}</CardDescription>
+        <CardDescription className="line-clamp-3">{decodeEntities(snippet)}</CardDescription>
         <div className="mt-4 text-sm text-muted-foreground">
           <span className="font-medium">{sourceName}</span>
           {publishedAt && (

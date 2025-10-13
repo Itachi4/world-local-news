@@ -67,12 +67,10 @@ const regionConfigs: RegionConfig[] = [
 ];
 
 async function fetchNewsFromRegion(region: RegionConfig, searchQuery?: string): Promise<any[]> {
-  const articles: any[] = [];
-  
-  for (const country of region.countries) {
+  const countryPromises = region.countries.map(async (country) => {
     try {
       console.log(`Fetching news from ${country.name} (${region.region})...`);
-      
+
       // Build URL with optional search query
       let url = `${GOOGLE_NEWS_RSS_BASE}`;
       if (searchQuery) {
@@ -80,65 +78,82 @@ async function fetchNewsFromRegion(region: RegionConfig, searchQuery?: string): 
       } else {
         url += `?gl=${country.code}&hl=en&ceid=${country.code}:en`;
       }
-      
+
       const response = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       });
-      
+
       if (!response.ok) {
         console.error(`Failed to fetch news for ${country.name}: ${response.status}`);
-        continue;
+        return [];
       }
-      
+
       const xmlText = await response.text();
       const parsedArticles = parseRSSFeed(xmlText, country.name, country.code, region.region);
-      
-      articles.push(...parsedArticles);
       console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`);
-      
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 300));
+      return parsedArticles;
     } catch (error) {
       console.error(`Error fetching news from ${country.name}:`, error);
+      return [];
     }
-  }
-  
+  });
+
+  // Run all country fetches in parallel to speed up scraping
+  const results = await Promise.allSettled(countryPromises);
+  const articles = results.flatMap((res) => (res.status === 'fulfilled' ? res.value : []));
   return articles;
 }
 
 function parseRSSFeed(xml: string, countryName: string, countryCode: string, region: string): any[] {
   const articles: any[] = [];
-  
+
+  const decode = (str: string) =>
+    (str || '')
+      .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;|&#x27;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
+
   // Parse RSS items
   const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
-  
+
   for (const itemMatch of itemMatches) {
     const itemXml = itemMatch[1];
-    
-    // Extract title
-    const titleMatch = itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/);
-    if (!titleMatch) continue;
-    const title = titleMatch[1];
-    
+
+    // Extract title (supports CDATA or plain text)
+    const titleMatch = itemXml.match(/<title>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/title>/);
+    const rawTitle = titleMatch ? (titleMatch[1] ?? titleMatch[2]) : null;
+    if (!rawTitle) continue;
+    const title = decode(rawTitle);
+
     // Extract link
     const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
     if (!linkMatch) continue;
-    const url = linkMatch[1];
-    
-    // Extract description/snippet
-    const descMatch = itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/);
-    const snippet = descMatch ? descMatch[1].replace(/<[^>]*>/g, '').substring(0, 200) : title.substring(0, 200);
-    
+    let url = linkMatch[1].trim();
+    // If Google News redirect contains url param, prefer the canonical URL
+    const urlParamMatch = url.match(/[?&]url=([^&]+)/);
+    if (urlParamMatch) {
+      try { url = decodeURIComponent(urlParamMatch[1]); } catch {}
+    }
+
+    // Extract description/snippet (supports CDATA or plain)
+    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/);
+    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : '';
+    const snippet = decode(rawDesc.replace(/<[^>]*>/g, '')).slice(0, 200);
+
     // Extract source
     const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
-    const sourceName = sourceMatch ? sourceMatch[1] : `News from ${countryName}`;
-    
+    const sourceName = decode(sourceMatch ? sourceMatch[1] : `News from ${countryName}`);
+
     // Extract publish date
     const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
     const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString();
-    
+
     articles.push({
       title: title.trim(),
       snippet: snippet.trim(),
@@ -148,10 +163,10 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
       source_region: region,
       published_at: publishedAt,
     });
-    
+
     if (articles.length >= 10) break; // Limit per country
   }
-  
+
   return articles;
 }
 
