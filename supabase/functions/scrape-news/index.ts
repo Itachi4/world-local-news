@@ -131,34 +131,48 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
     if (!rawTitle) continue;
     const title = decode(rawTitle);
 
-    // Extract actual article URL - Google News RSS provides redirect URLs
-    // First try to get URL from source tag's url attribute (most reliable)
-    const sourceUrlMatch = itemXml.match(/<source[^>]*url="([^"]+)"/);
-    let url = '';
+    // Extract actual article URL from Google News RSS
+    // Google News provides a redirect URL in <link>, we need to extract the actual article URL
+    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+    if (!linkMatch) continue;
     
-    if (sourceUrlMatch) {
-      url = decode(sourceUrlMatch[1]);
-    } else {
-      // Fallback to link tag
-      const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
-      if (!linkMatch) continue;
-      url = linkMatch[1].trim();
-      
-      // Try to extract canonical URL from Google News redirect
-      const urlParamMatch = url.match(/[?&]url=([^&]+)/);
-      if (urlParamMatch) {
-        try { url = decodeURIComponent(urlParamMatch[1]); } catch {}
+    let url = linkMatch[1].trim();
+    
+    // Google News redirect URLs look like: https://news.google.com/rss/articles/CBM...?oc=5
+    // The actual article URL is often in the description or we need to follow the redirect
+    // For now, try to extract from description first
+    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/);
+    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : '';
+    
+    // Look for the first external link in the description (usually the article link)
+    const descLinkMatch = rawDesc.match(/href=["']([^"']+)["']/);
+    if (descLinkMatch) {
+      const descUrl = decode(descLinkMatch[1]);
+      // Use this URL if it's not a Google News URL
+      if (descUrl && !descUrl.includes('news.google.com')) {
+        url = descUrl;
       }
     }
     
-    // Skip if still a Google News redirect URL
-    if (!url || url.includes('news.google.com/rss/articles/')) {
+    // If we still have a Google News redirect, try to extract the url parameter
+    if (url.includes('news.google.com')) {
+      const urlParamMatch = url.match(/[?&]url=([^&]+)/);
+      if (urlParamMatch) {
+        try {
+          const decodedUrl = decodeURIComponent(urlParamMatch[1]);
+          if (decodedUrl && !decodedUrl.includes('news.google.com')) {
+            url = decodedUrl;
+          }
+        } catch {}
+      }
+    }
+    
+    // Skip if we still don't have a valid external URL
+    if (!url || url.includes('news.google.com/rss/articles/') || url.includes('news.google.com')) {
       continue;
     }
 
-    // Extract description/snippet (supports CDATA or plain)
-    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/);
-    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : '';
+    // Extract description/snippet (we already have rawDesc from above)
     // Decode first, then strip HTML tags to handle encoded tags like &lt;a&gt;
     const decodedDesc = decode(rawDesc);
     const snippet = decodedDesc.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
