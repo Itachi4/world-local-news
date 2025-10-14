@@ -159,7 +159,9 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
     // Extract description/snippet (supports CDATA or plain)
     const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/);
     const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : '';
-    const snippet = decode(rawDesc.replace(/<[^>]*>/g, '')).slice(0, 200);
+    // Decode first, then strip HTML tags to handle encoded tags like &lt;a&gt;
+    const decodedDesc = decode(rawDesc);
+    const snippet = decodedDesc.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
 
     // Extract source
     const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
