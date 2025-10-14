@@ -49,33 +49,41 @@ export const ArticleCard = ({
   publishedAt,
 }: ArticleCardProps) => {
   return (
-    <Card className="hover:shadow-lg transition-shadow duration-200">
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-lg leading-tight">
-            <a 
-              href={getDisplayUrl(url)} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="hover:underline flex items-start gap-2"
-            >
-              <span>{decodeEntities(title)}</span>
-              <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1" />
-            </a>
-          </CardTitle>
+    <Card className="group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-border/50 hover:border-primary/20 hover:-translate-y-1 bg-card">
+      <CardHeader className="pb-3">
+        <div className="flex gap-2 flex-wrap mb-3">
+          <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-medium">
+            {sourceRegion}
+          </Badge>
+          <Badge variant="outline" className="border-border/50 text-muted-foreground">
+            {sourceCountry}
+          </Badge>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Badge variant="secondary">{sourceRegion}</Badge>
-          <Badge variant="outline">{sourceCountry}</Badge>
-        </div>
+        <CardTitle className="text-lg leading-tight font-bold">
+          <a 
+            href={getDisplayUrl(url)} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="group-hover:text-primary transition-colors duration-200 flex items-start gap-2"
+          >
+            <span className="flex-1">{decodeEntities(title)}</span>
+            <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+          </a>
+        </CardTitle>
       </CardHeader>
-      <CardContent>
-        <CardDescription className="line-clamp-3">{decodeEntities(snippet)}</CardDescription>
-        <div className="mt-4 text-sm text-muted-foreground">
-          <span className="font-medium">{sourceName}</span>
+      <CardContent className="flex-1 flex flex-col">
+        <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1">
+          {decodeEntities(snippet)}
+        </CardDescription>
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50">
+          <span className="font-semibold text-foreground/80">{sourceName}</span>
           {publishedAt && (
-            <span className="ml-2">
-              • {new Date(publishedAt).toLocaleDateString()}
+            <span className="flex items-center gap-1">
+              {new Date(publishedAt).toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                year: 'numeric'
+              })}
             </span>
           )}
         </div>
