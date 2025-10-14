@@ -10,10 +10,22 @@ const decodeEntities = (str: string) => {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/&quot;/g, '"')
     .replace(/&apos;|&#x27;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 };
+
+// Strip any HTML tags and collapse whitespace
+const stripHtml = (str: string) => {
+  if (!str) return "";
+  return str
+    .replace(/<[^>]*>/g, " ") // remove tags
+    .replace(/\s+/g, " ") // collapse whitespace
+    .trim();
+};
+
+// Decode and sanitize description/snippet text safely for display
+const cleanSnippet = (str: string) => stripHtml(decodeEntities(str));
 
 // Prefer canonical article URL over Google News redirect
 const getDisplayUrl = (input: string) => {
@@ -73,7 +85,7 @@ export const ArticleCard = ({
       </CardHeader>
       <CardContent className="flex-1 flex flex-col">
         <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1">
-          {decodeEntities(snippet)}
+          {cleanSnippet(snippet)}
         </CardDescription>
         <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50">
           <span className="font-semibold text-foreground/80">{sourceName}</span>
