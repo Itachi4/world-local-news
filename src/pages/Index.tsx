@@ -137,17 +137,22 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-accent text-primary-foreground py-16 px-6 shadow-lg">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
-        <div className="container mx-auto relative z-10">
-          <h1 className="text-5xl md:text-6xl font-bold mb-3 tracking-tight animate-fade-in">Latest Now</h1>
-          <p className="text-xl opacity-95 animate-fade-in">Breaking news from around the world</p>
+      <header className="relative overflow-hidden bg-gradient-to-br from-primary via-[hsl(240_80%_65%)] to-accent text-primary-foreground py-20 px-6">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent"></div>
+        <div className="container mx-auto relative z-10 text-center">
+          <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
+            Latest Now
+          </h1>
+          <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            Breaking news from around the world
+          </p>
         </div>
       </header>
 
       {/* Search and Filter Bar */}
-      <div className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur-sm shadow-sm">
-        <div className="container mx-auto px-4 py-4">
+      <div className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur-md shadow-md">
+        <div className="container mx-auto px-4 py-5">
           <form onSubmit={handleSearch} className="flex gap-3 flex-wrap items-center">
             <div className="flex-1 min-w-[280px]">
               <div className="relative">
@@ -173,11 +178,11 @@ const Index = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button type="submit" disabled={scraping || !searchQuery.trim()} className="h-11 px-6 shadow-md hover:shadow-lg transition-all">
+            <Button type="submit" disabled={scraping || !searchQuery.trim()} className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95">
               <Search className="w-4 h-4 mr-2" />
               {scraping ? "Searching..." : "Search"}
             </Button>
-            <Button onClick={handleScrape} disabled={scraping} variant="secondary" className="h-11 px-6 shadow-md hover:shadow-lg transition-all">
+            <Button onClick={handleScrape} disabled={scraping} variant="secondary" className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95">
               <RefreshCw className={`w-4 h-4 mr-2 ${scraping ? 'animate-spin' : ''}`} />
               {scraping ? "Fetching..." : "Fetch Headlines"}
             </Button>
@@ -186,32 +191,47 @@ const Index = () => {
       </div>
 
       {/* Articles Grid */}
-      <main className="container mx-auto px-4 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-3xl font-bold text-foreground">
+      <main className="container mx-auto px-4 py-12">
+        <div className="flex items-center justify-between mb-10 animate-fade-in">
+          <h2 className="text-3xl md:text-4xl font-bold text-foreground">
             {searchQuery ? `"${searchQuery}"` : "Latest Headlines"}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            {articles.length} {articles.length === 1 ? 'article' : 'articles'}
-          </p>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+            <p className="text-sm font-medium text-muted-foreground">
+              {articles.length} {articles.length === 1 ? 'article' : 'articles'}
+            </p>
+          </div>
         </div>
         
         {loading ? (
-          <div className="text-center py-20">
-            <RefreshCw className="w-8 h-8 mx-auto mb-4 text-primary animate-spin" />
-            <p className="text-muted-foreground">Loading articles...</p>
+          <div className="text-center py-24">
+            <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-full bg-primary/10 animate-glow">
+              <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+            </div>
+            <p className="text-lg text-muted-foreground animate-pulse">Loading articles...</p>
           </div>
         ) : articles.length === 0 ? (
-          <div className="text-center py-20 bg-muted/30 rounded-lg border border-dashed">
-            <p className="text-lg text-muted-foreground mb-2">No articles found</p>
+          <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50 animate-fade-in">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center">
+              <Search className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <p className="text-xl font-semibold text-foreground mb-2">No articles found</p>
             <p className="text-sm text-muted-foreground">
               Try fetching headlines or searching for a specific topic
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {articles.map((article, index) => (
-              <div key={article.id} style={{ animationDelay: `${index * 50}ms` }} className="animate-scale-in">
+              <div 
+                key={article.id} 
+                style={{ 
+                  animationDelay: `${index * 0.05}s`,
+                  animationFillMode: 'both'
+                }} 
+                className="animate-fade-in"
+              >
                 <ArticleCard
                   title={article.title}
                   snippet={article.snippet}

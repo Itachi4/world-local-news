@@ -61,13 +61,14 @@ export const ArticleCard = ({
   publishedAt,
 }: ArticleCardProps) => {
   return (
-    <Card className="group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-border/50 hover:border-primary/20 hover:-translate-y-1 bg-card">
-      <CardHeader className="pb-3">
+    <Card className="group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+      <CardHeader className="pb-3 relative z-10">
         <div className="flex gap-2 flex-wrap mb-3">
-          <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-medium">
+          <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-medium hover:bg-primary/20 transition-colors cursor-default">
             {sourceRegion}
           </Badge>
-          <Badge variant="outline" className="border-border/50 text-muted-foreground">
+          <Badge variant="outline" className="border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors cursor-default">
             {sourceCountry}
           </Badge>
         </div>
@@ -76,21 +77,21 @@ export const ArticleCard = ({
             href={getDisplayUrl(url)} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="group-hover:text-primary transition-colors duration-200 flex items-start gap-2"
+            className="group-hover:text-primary transition-all duration-300 flex items-start gap-2 hover:gap-3"
           >
             <span className="flex-1">{decodeEntities(title)}</span>
-            <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12" />
           </a>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col">
-        <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1">
+      <CardContent className="flex-1 flex flex-col relative z-10">
+        <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1 text-muted-foreground/90 group-hover:text-muted-foreground transition-colors">
           {cleanSnippet(snippet)}
         </CardDescription>
-        <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50">
-          <span className="font-semibold text-foreground/80">{sourceName}</span>
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50 group-hover:border-primary/20 transition-colors">
+          <span className="font-semibold text-foreground/70 group-hover:text-foreground transition-colors">{sourceName}</span>
           {publishedAt && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 bg-muted/50 px-2 py-1 rounded-md">
               {new Date(publishedAt).toLocaleDateString('en-US', { 
                 month: 'short', 
                 day: 'numeric',
