@@ -28,12 +28,9 @@ const Index = () => {
   const fetchArticles = async () => {
     setLoading(true);
     try {
-      const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
       let query = supabase
         .from("articles")
         .select("*")
-        .gt('published_at', cutoff)
-        .not('url', 'ilike', '%news.google.com%')
         .order("published_at", { ascending: false })
         .limit(50);
 
