@@ -8,6 +8,37 @@ const corsHeaders = {
 // Using Google News RSS feeds for different regions
 const GOOGLE_NEWS_RSS_BASE = 'https://news.google.com/rss';
 
+// Helper: simple fetch with retry for transient errors like 429/503
+async function fetchWithRetry(url: string, init: RequestInit = {}, retries = 2, backoffMs = 500): Promise<Response> {
+  let lastErr: any
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init)
+      if (res.ok) return res
+      // Retry on common transient statuses
+      if (![429, 502, 503, 504].includes(res.status)) return res
+    } catch (e) {
+      lastErr = e
+      if (attempt === retries) throw e
+    }
+    await new Promise(r => setTimeout(r, backoffMs * (attempt + 1)))
+  }
+  throw lastErr ?? new Error('Failed to fetch after retries')
+}
+
+// Helper: try to resolve Google News redirect to final URL quickly
+async function resolveRedirect(maybeRedirectUrl: string, timeoutMs = 3000): Promise<string | null> {
+  try {
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), timeoutMs)
+    const res = await fetch(maybeRedirectUrl, { redirect: 'follow', signal: ac.signal })
+    clearTimeout(t)
+    const finalUrl = res.url
+    if (finalUrl && !finalUrl.includes('news.google.com')) return finalUrl
+  } catch {}
+  return null
+}
+
 interface RegionConfig {
   region: string;
   countries: { code: string; name: string }[];
@@ -69,44 +100,45 @@ const regionConfigs: RegionConfig[] = [
 async function fetchNewsFromRegion(region: RegionConfig, searchQuery?: string): Promise<any[]> {
   const countryPromises = region.countries.map(async (country) => {
     try {
-      console.log(`Fetching news from ${country.name} (${region.region})...`);
+      console.log(`Fetching news from ${country.name} (${region.region})...`)
 
       // Build URL with optional search query
-      let url = `${GOOGLE_NEWS_RSS_BASE}`;
+      let url = `${GOOGLE_NEWS_RSS_BASE}`
       if (searchQuery) {
-        url += `/search?q=${encodeURIComponent(searchQuery)}&gl=${country.code}&hl=en&ceid=${country.code}:en`;
+        url += `/search?q=${encodeURIComponent(searchQuery)}&gl=${country.code}&hl=en&ceid=${country.code}:en`
       } else {
-        url += `?gl=${country.code}&hl=en&ceid=${country.code}:en`;
+        url += `?gl=${country.code}&hl=en&ceid=${country.code}:en`
       }
 
-      const response = await fetch(url, {
+      const response = await fetchWithRetry(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+          'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
+          'Cache-Control': 'no-cache'
         }
-      });
+      }, 2)
 
       if (!response.ok) {
-        console.error(`Failed to fetch news for ${country.name}: ${response.status}`);
-        return [];
+        console.error(`Failed to fetch news for ${country.name}: ${response.status}`)
+        return []
       }
 
-      const xmlText = await response.text();
-      const parsedArticles = parseRSSFeed(xmlText, country.name, country.code, region.region);
-      console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`);
-      return parsedArticles;
+      const xmlText = await response.text()
+      const parsedArticles = await parseRSSFeed(xmlText, country.name, country.code, region.region)
+      console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`)
     } catch (error) {
-      console.error(`Error fetching news from ${country.name}:`, error);
-      return [];
+      console.error(`Error fetching news from ${country.name}:`, error)
+      return []
     }
-  });
+  })
 
   // Run all country fetches in parallel to speed up scraping
-  const results = await Promise.allSettled(countryPromises);
-  const articles = results.flatMap((res) => (res.status === 'fulfilled' ? res.value : []));
-  return articles;
+  const results = await Promise.allSettled(countryPromises)
+  const articles = results.flatMap((res) => (res.status === 'fulfilled' ? res.value : []))
+  return articles
 }
 
-function parseRSSFeed(xml: string, countryName: string, countryCode: string, region: string): any[] {
+async function parseRSSFeed(xml: string, countryName: string, countryCode: string, region: string): Promise<any[]> {
   const articles: any[] = [];
 
   const decode = (str: string) =>
@@ -133,43 +165,46 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
 
     // Extract actual article URL from Google News RSS
     // Google News provides a redirect URL in <link>, we need to extract the actual article URL
-    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
-    if (!linkMatch) continue;
+    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/)
+    if (!linkMatch) continue
     
-    let url = linkMatch[1].trim();
+    let url = linkMatch[1].trim()
     
-    // Google News redirect URLs look like: https://news.google.com/rss/articles/CBM...?oc=5
-    // The actual article URL is often in the description or we need to follow the redirect
-    // For now, try to extract from description first
-    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/);
-    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : '';
+    // Try to extract canonical URL from description first
+    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/)
+    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : ''
     
     // Look for the first external link in the description (usually the article link)
-    const descLinkMatch = rawDesc.match(/href=["']([^"']+)["']/);
+    const descLinkMatch = rawDesc.match(/href=["']([^"']+)["']/)
     if (descLinkMatch) {
-      const descUrl = decode(descLinkMatch[1]);
-      // Use this URL if it's not a Google News URL
+      const descUrl = decode(descLinkMatch[1])
       if (descUrl && !descUrl.includes('news.google.com')) {
-        url = descUrl;
+        url = descUrl
       }
     }
     
     // If we still have a Google News redirect, try to extract the url parameter
     if (url.includes('news.google.com')) {
-      const urlParamMatch = url.match(/[?&]url=([^&]+)/);
+      const urlParamMatch = url.match(/[?&]url=([^&]+)/)
       if (urlParamMatch) {
         try {
-          const decodedUrl = decodeURIComponent(urlParamMatch[1]);
+          const decodedUrl = decodeURIComponent(urlParamMatch[1])
           if (decodedUrl && !decodedUrl.includes('news.google.com')) {
-            url = decodedUrl;
+            url = decodedUrl
           }
         } catch {}
       }
     }
-    
+
+    // Last resort: try to follow redirect quickly to get final URL
+    if (url.includes('news.google.com')) {
+      const resolved = await resolveRedirect(url)
+      if (resolved) url = resolved
+    }
+
     // Skip if we still don't have a valid external URL
     if (!url || url.includes('news.google.com/rss/articles/') || url.includes('news.google.com')) {
-      continue;
+      continue
     }
 
     // Extract description/snippet (we already have rawDesc from above)
@@ -181,9 +216,13 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
     const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
     const sourceName = decode(sourceMatch ? sourceMatch[1] : `News from ${countryName}`);
 
-    // Extract publish date
-    const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
-    const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString();
+    // Extract publish date and filter out stale items (older than ~3 days)
+    const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/)
+    const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]) : new Date()
+    const threeDaysAgo = Date.now() - 1000 * 60 * 60 * 72
+    if (publishedAt.getTime() < threeDaysAgo) {
+      continue
+    }
 
     articles.push({
       title: title.trim(),
@@ -192,10 +231,10 @@ function parseRSSFeed(xml: string, countryName: string, countryCode: string, reg
       source_name: sourceName.trim(),
       source_country: countryCode,
       source_region: region,
-      published_at: publishedAt,
-    });
+      published_at: publishedAt.toISOString(),
+    })
 
-    if (articles.length >= 10) break; // Limit per country
+    if (articles.length >= 10) break // Limit per country
   }
 
   return articles;
