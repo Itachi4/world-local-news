@@ -60,6 +60,10 @@ export const ArticleCard = ({
   sourceRegion,
   publishedAt,
 }: ArticleCardProps) => {
+  // Extra guard: remove any dangling partial tags (e.g. truncated "<a href...")
+  const baseSnippet = cleanSnippet(snippet)
+  const safeSnippet = baseSnippet.replace(/<[^>]*$/g, '').replace(/^<a[^>]*$/i, '').trim()
+
   return (
     <Card className="group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -77,16 +81,16 @@ export const ArticleCard = ({
             href={getDisplayUrl(url)} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="group-hover:text-primary transition-all duration-300 flex items-start gap-2 hover:gap-3"
+            className="group-hover:text-primary transition-all duration-300 flex items-start gap-2 hover:gap-3 story-link"
           >
-            <span className="flex-1">{decodeEntities(title)}</span>
+            <span className="flex-1 break-words">{decodeEntities(title)}</span>
             <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12" />
           </a>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col relative z-10">
-        <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1 text-muted-foreground/90 group-hover:text-muted-foreground transition-colors">
-          {cleanSnippet(snippet)}
+        <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1 text-muted-foreground/90 group-hover:text-muted-foreground transition-colors break-words">
+          {safeSnippet}
         </CardDescription>
         <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50 group-hover:border-primary/20 transition-colors">
           <span className="font-semibold text-foreground/70 group-hover:text-foreground transition-colors">{sourceName}</span>

@@ -219,8 +219,8 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     // Extract publish date and filter out stale items (older than ~3 days)
     const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/)
     const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]) : new Date()
-    const threeDaysAgo = Date.now() - 1000 * 60 * 60 * 72
-    if (publishedAt.getTime() < threeDaysAgo) {
+    const oneDayAgo = Date.now() - 1000 * 60 * 60 * 24
+    if (publishedAt.getTime() < oneDayAgo) {
       continue
     }
 
@@ -273,18 +273,32 @@ Deno.serve(async (req) => {
 
     console.log(`Total articles fetched: ${allArticles.length}`);
 
-    // Insert articles into database (ignore duplicates)
+    // Insert/Update articles (conflict on URL)
     if (allArticles.length > 0) {
-      const { data, error } = await supabase
-        .from('articles')
-        .upsert(allArticles, { onConflict: 'url', ignoreDuplicates: true });
+      const validArticles = allArticles.filter((a) => a && typeof a === 'object' && a.url && a.title && a.source_name && !a.url.includes('news.google.com'))
+      console.log(`Valid articles after filtering: ${validArticles.length}`)
 
-      if (error) {
-        console.error('Error inserting articles:', error);
-        throw error;
+      if (validArticles.length > 0) {
+        const { error: upsertError } = await supabase
+          .from('articles')
+          .upsert(validArticles, { onConflict: 'url' });
+
+        if (upsertError) {
+          console.error('Error inserting articles:', upsertError);
+          throw upsertError;
+        }
+
+        console.log('Articles upserted successfully');
+      } else {
+        console.log('No valid articles to upsert after filtering');
       }
 
-      console.log('Articles inserted successfully');
+      // Cleanup: remove stale (older than 24h) and bad redirect URLs
+      const cutoff = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
+      const { error: delOldErr } = await supabase.from('articles').delete().lt('published_at', cutoff)
+      if (delOldErr) console.error('Error cleaning old articles:', delOldErr)
+      const { error: delBadUrlErr } = await supabase.from('articles').delete().ilike('url', '%news.google.com%')
+      if (delBadUrlErr) console.error('Error cleaning redirect articles:', delBadUrlErr)
     }
 
     return new Response(
