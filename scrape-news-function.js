@@ -1,3 +1,6 @@
+// Copy this entire code and paste it into the Supabase Edge Function editor
+// Function name: scrape-news
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
@@ -9,34 +12,34 @@ const corsHeaders = {
 const GOOGLE_NEWS_RSS_BASE = 'https://news.google.com/rss';
 
 // Helper: simple fetch with retry for transient errors like 429/503
-async function fetchWithRetry(url: string, init: RequestInit = {}, retries = 2, backoffMs = 500): Promise<Response> {
-  let lastErr: any
+async function fetchWithRetry(url, init = {}, retries = 2, backoffMs = 500) {
+  let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, init)
-      if (res.ok) return res
+      const res = await fetch(url, init);
+      if (res.ok) return res;
       // Retry on common transient statuses
-      if (![429, 502, 503, 504].includes(res.status)) return res
+      if (![429, 502, 503, 504].includes(res.status)) return res;
     } catch (e) {
-      lastErr = e
-      if (attempt === retries) throw e
+      lastErr = e;
+      if (attempt === retries) throw e;
     }
-    await new Promise(r => setTimeout(r, backoffMs * (attempt + 1)))
+    await new Promise(r => setTimeout(r, backoffMs * (attempt + 1)));
   }
-  throw lastErr ?? new Error('Failed to fetch after retries')
+  throw lastErr ?? new Error('Failed to fetch after retries');
 }
 
 // Helper: try to resolve Google News redirect to final URL quickly
-async function resolveRedirect(maybeRedirectUrl: string, timeoutMs = 3000): Promise<string | null> {
+async function resolveRedirect(maybeRedirectUrl, timeoutMs = 3000) {
   try {
-    const ac = new AbortController()
-    const t = setTimeout(() => ac.abort(), timeoutMs)
-    const res = await fetch(maybeRedirectUrl, { redirect: 'follow', signal: ac.signal })
-    clearTimeout(t)
-    const finalUrl = res.url
-    if (finalUrl && !finalUrl.includes('news.google.com')) return finalUrl
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), timeoutMs);
+    const res = await fetch(maybeRedirectUrl, { redirect: 'follow', signal: ac.signal });
+    clearTimeout(t);
+    const finalUrl = res.url;
+    if (finalUrl && !finalUrl.includes('news.google.com')) return finalUrl;
   } catch {}
-  return null
+  return null;
 }
 
 interface RegionConfig {
@@ -44,7 +47,7 @@ interface RegionConfig {
   countries: { code: string; name: string }[];
 }
 
-const regionConfigs: RegionConfig[] = [
+const regionConfigs = [
   {
     region: 'Africa',
     countries: [
@@ -97,20 +100,20 @@ const regionConfigs: RegionConfig[] = [
   },
 ];
 
-async function fetchNewsFromRegion(region: RegionConfig, searchQuery?: string, limitCountries = false): Promise<any[]> {
+async function fetchNewsFromRegion(region, searchQuery, limitCountries = false) {
   // For faster initial results, only fetch from first 2 countries per region
   const countriesToFetch = limitCountries ? region.countries.slice(0, 2) : region.countries;
   
   const countryPromises = countriesToFetch.map(async (country) => {
     try {
-      console.log(`Fetching news from ${country.name} (${region.region})...`)
+      console.log(`Fetching news from ${country.name} (${region.region})...`);
 
       // Build URL with optional search query
-      let url = `${GOOGLE_NEWS_RSS_BASE}`
+      let url = `${GOOGLE_NEWS_RSS_BASE}`;
       if (searchQuery) {
-        url += `/search?q=${encodeURIComponent(searchQuery)}&gl=${country.code}&hl=en&ceid=${country.code}:en`
+        url += `/search?q=${encodeURIComponent(searchQuery)}&gl=${country.code}&hl=en&ceid=${country.code}:en`;
       } else {
-        url += `?gl=${country.code}&hl=en&ceid=${country.code}:en`
+        url += `?gl=${country.code}&hl=en&ceid=${country.code}:en`;
       }
 
       const response = await fetchWithRetry(url, {
@@ -119,33 +122,33 @@ async function fetchNewsFromRegion(region: RegionConfig, searchQuery?: string, l
           'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
           'Cache-Control': 'no-cache'
         }
-      }, 2)
+      }, 2);
 
       if (!response.ok) {
-        console.error(`Failed to fetch news for ${country.name}: ${response.status}`)
-        return []
+        console.error(`Failed to fetch news for ${country.name}: ${response.status}`);
+        return [];
       }
 
-      const xmlText = await response.text()
-      const parsedArticles = await parseRSSFeed(xmlText, country.name, country.code, region.region)
-      console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`)
+      const xmlText = await response.text();
+      const parsedArticles = await parseRSSFeed(xmlText, country.name, country.code, region.region);
+      console.log(`Fetched ${parsedArticles.length} articles from ${country.name}`);
       return parsedArticles;
     } catch (error) {
-      console.error(`Error fetching news from ${country.name}:`, error)
-      return []
+      console.error(`Error fetching news from ${country.name}:`, error);
+      return [];
     }
-  })
+  });
 
   // Run all country fetches in parallel to speed up scraping
-  const results = await Promise.allSettled(countryPromises)
-  const articles = results.flatMap((res) => (res.status === 'fulfilled' ? res.value : []))
-  return articles
+  const results = await Promise.allSettled(countryPromises);
+  const articles = results.flatMap((res) => (res.status === 'fulfilled' ? res.value : []));
+  return articles;
 }
 
-async function parseRSSFeed(xml: string, countryName: string, countryCode: string, region: string): Promise<any[]> {
-  const articles: any[] = [];
+async function parseRSSFeed(xml, countryName, countryCode, region) {
+  const articles = [];
 
-  const decode = (str: string) =>
+  const decode = (str) =>
     (str || '')
       .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
       .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
@@ -168,33 +171,32 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     const title = decode(rawTitle);
 
     // Extract actual article URL from Google News RSS
-    // Google News provides a redirect URL in <link>, we need to extract the actual article URL
-    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/)
-    if (!linkMatch) continue
+    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+    if (!linkMatch) continue;
     
-    let url = linkMatch[1].trim()
+    let url = linkMatch[1].trim();
     
     // Try to extract canonical URL from description first
-    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/)
-    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : ''
+    const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/description>/);
+    const rawDesc = descMatch ? (descMatch[1] ?? descMatch[2]) : '';
     
-    // Look for the first external link in the description (usually the article link)
-    const descLinkMatch = rawDesc.match(/href=["']([^"']+)["']/)
+    // Look for the first external link in the description
+    const descLinkMatch = rawDesc.match(/href=["']([^"']+)["']/);
     if (descLinkMatch) {
-      const descUrl = decode(descLinkMatch[1])
+      const descUrl = decode(descLinkMatch[1]);
       if (descUrl && !descUrl.includes('news.google.com')) {
-        url = descUrl
+        url = descUrl;
       }
     }
     
     // If we still have a Google News redirect, try to extract the url parameter
     if (url.includes('news.google.com')) {
-      const urlParamMatch = url.match(/[?&]url=([^&]+)/)
+      const urlParamMatch = url.match(/[?&]url=([^&]+)/);
       if (urlParamMatch) {
         try {
-          const decodedUrl = decodeURIComponent(urlParamMatch[1])
+          const decodedUrl = decodeURIComponent(urlParamMatch[1]);
           if (decodedUrl && !decodedUrl.includes('news.google.com')) {
-            url = decodedUrl
+            url = decodedUrl;
           }
         } catch {}
       }
@@ -202,17 +204,16 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
 
     // Last resort: try to follow redirect quickly to get final URL
     if (url.includes('news.google.com')) {
-      const resolved = await resolveRedirect(url)
-      if (resolved) url = resolved
+      const resolved = await resolveRedirect(url);
+      if (resolved) url = resolved;
     }
 
     // Skip if we still don't have a valid external URL
     if (!url || url.includes('news.google.com/rss/articles/') || url.includes('news.google.com')) {
-      continue
+      continue;
     }
 
-    // Extract description/snippet (we already have rawDesc from above)
-    // Decode first, then strip HTML tags to handle encoded tags like &lt;a&gt;
+    // Extract description/snippet
     const decodedDesc = decode(rawDesc);
     const snippet = decodedDesc.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
 
@@ -220,12 +221,12 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
     const sourceName = decode(sourceMatch ? sourceMatch[1] : `News from ${countryName}`);
 
-    // Extract publish date and filter out stale items (older than ~3 days)
-    const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/)
-    const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]) : new Date()
-    const threeDaysAgo = Date.now() - 1000 * 60 * 60 * 72
+    // Extract publish date and filter out stale items
+    const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
+    const publishedAt = pubDateMatch ? new Date(pubDateMatch[1]) : new Date();
+    const threeDaysAgo = Date.now() - 1000 * 60 * 60 * 72;
     if (publishedAt.getTime() < threeDaysAgo) {
-      continue
+      continue;
     }
 
     articles.push({
@@ -236,9 +237,9 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       source_country: countryCode,
       source_region: region,
       published_at: publishedAt.toISOString(),
-    })
+    });
 
-    if (articles.length >= 10) break // Limit per country
+    if (articles.length >= 10) break; // Limit per country
   }
 
   return articles;
@@ -251,8 +252,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get request body for search query
@@ -264,7 +265,7 @@ Deno.serve(async (req) => {
     }
     
     // Fetch news from specified region or all regions
-    const allArticles: any[] = [];
+    const allArticles = [];
     
     const regionsToSearch = region 
       ? regionConfigs.filter(r => r.region === region)
