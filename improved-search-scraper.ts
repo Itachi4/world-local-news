@@ -5,32 +5,41 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// News sources with RSS feeds
+// Comprehensive news sources for all regions
 const newsSources = [
-  {
-    name: "BBC News",
-    country: "GB",
-    region: "Europe",
-    rssUrl: "http://feeds.bbci.co.uk/news/rss.xml"
-  },
+  // North America
   {
     name: "CNN",
-    country: "US", 
+    country: "US",
     region: "North America",
     rssUrl: "http://rss.cnn.com/rss/edition.rss"
   },
   {
+    name: "BBC News",
+    country: "US",
+    region: "North America",
+    rssUrl: "http://feeds.bbci.co.uk/news/rss.xml"
+  },
+  {
     name: "Reuters",
     country: "US",
-    region: "North America", 
+    region: "North America",
     rssUrl: "https://feeds.reuters.com/reuters/topNews"
   },
   {
-    name: "Al Jazeera",
-    country: "QA",
-    region: "Asia",
-    rssUrl: "https://www.aljazeera.com/xml/rss/all.xml"
+    name: "Associated Press",
+    country: "US",
+    region: "North America",
+    rssUrl: "https://feeds.apnews.com/apnews/topnews"
   },
+  {
+    name: "CBC News",
+    country: "CA",
+    region: "North America",
+    rssUrl: "https://rss.cbc.ca/rss/-/topstories"
+  },
+
+  // Europe
   {
     name: "The Guardian",
     country: "GB",
@@ -38,10 +47,150 @@ const newsSources = [
     rssUrl: "https://www.theguardian.com/world/rss"
   },
   {
-    name: "Associated Press",
-    country: "US",
-    region: "North America",
-    rssUrl: "https://feeds.apnews.com/apnews/topnews"
+    name: "BBC News UK",
+    country: "GB",
+    region: "Europe",
+    rssUrl: "http://feeds.bbci.co.uk/news/uk/rss.xml"
+  },
+  {
+    name: "Deutsche Welle",
+    country: "DE",
+    region: "Europe",
+    rssUrl: "https://rss.dw.com/rdf/rss-en-all"
+  },
+  {
+    name: "France 24",
+    country: "FR",
+    region: "Europe",
+    rssUrl: "https://www.france24.com/en/rss"
+  },
+  {
+    name: "RT News",
+    country: "RU",
+    region: "Europe",
+    rssUrl: "https://www.rt.com/rss/"
+  },
+
+  // Asia
+  {
+    name: "Al Jazeera",
+    country: "QA",
+    region: "Asia",
+    rssUrl: "https://www.aljazeera.com/xml/rss/all.xml"
+  },
+  {
+    name: "Times of India",
+    country: "IN",
+    region: "Asia",
+    rssUrl: "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms"
+  },
+  {
+    name: "China Daily",
+    country: "CN",
+    region: "Asia",
+    rssUrl: "https://www.chinadaily.com.cn/rss/world.xml"
+  },
+  {
+    name: "Japan Times",
+    country: "JP",
+    region: "Asia",
+    rssUrl: "https://www.japantimes.co.jp/rss/news/"
+  },
+  {
+    name: "Gulf News",
+    country: "AE",
+    region: "Asia",
+    rssUrl: "https://gulfnews.com/rss"
+  },
+  {
+    name: "Straits Times",
+    country: "SG",
+    region: "Asia",
+    rssUrl: "https://www.straitstimes.com/news/world/rss.xml"
+  },
+
+  // Africa
+  {
+    name: "BBC Africa",
+    country: "GB",
+    region: "Africa",
+    rssUrl: "http://feeds.bbci.co.uk/news/world/africa/rss.xml"
+  },
+  {
+    name: "Al Jazeera Africa",
+    country: "QA",
+    region: "Africa",
+    rssUrl: "https://www.aljazeera.com/xml/rss/all.xml"
+  },
+  {
+    name: "News24",
+    country: "ZA",
+    region: "Africa",
+    rssUrl: "https://www.news24.com/feeds/rss"
+  },
+  {
+    name: "Daily Nation",
+    country: "KE",
+    region: "Africa",
+    rssUrl: "https://www.nation.co.ke/rss"
+  },
+  {
+    name: "Premium Times",
+    country: "NG",
+    region: "Africa",
+    rssUrl: "https://www.premiumtimesng.com/feed"
+  },
+
+  // South America
+  {
+    name: "BBC Latin America",
+    country: "GB",
+    region: "South America",
+    rssUrl: "http://feeds.bbci.co.uk/news/world/latin_america/rss.xml"
+  },
+  {
+    name: "Al Jazeera Americas",
+    country: "QA",
+    region: "South America",
+    rssUrl: "https://www.aljazeera.com/xml/rss/all.xml"
+  },
+  {
+    name: "Folha de S.Paulo",
+    country: "BR",
+    region: "South America",
+    rssUrl: "https://feeds.folha.uol.com.br/folha/mundo/rss091.xml"
+  },
+  {
+    name: "Clarín",
+    country: "AR",
+    region: "South America",
+    rssUrl: "https://www.clarin.com/rss/lo-ultimo/"
+  },
+  {
+    name: "El Tiempo",
+    country: "CO",
+    region: "South America",
+    rssUrl: "https://www.eltiempo.com/rss/archivo/portada.xml"
+  },
+
+  // Oceania
+  {
+    name: "ABC News Australia",
+    country: "AU",
+    region: "Oceania",
+    rssUrl: "https://www.abc.net.au/news/feed/51120/rss.xml"
+  },
+  {
+    name: "BBC Australia",
+    country: "GB",
+    region: "Oceania",
+    rssUrl: "http://feeds.bbci.co.uk/news/world/australia/rss.xml"
+  },
+  {
+    name: "Stuff New Zealand",
+    country: "NZ",
+    region: "Oceania",
+    rssUrl: "https://www.stuff.co.nz/rss"
   }
 ];
 
@@ -82,8 +231,8 @@ async function resolveUrl(url: string): Promise<string> {
   }
 }
 
-// Function to parse RSS feed
-async function parseRSSFeed(feedUrl: string, source: any): Promise<any[]> {
+// Function to parse RSS feed with search filtering
+async function parseRSSFeed(feedUrl: string, source: any, searchQuery?: string): Promise<any[]> {
   try {
     const response = await fetch(feedUrl, {
       headers: {
@@ -102,7 +251,7 @@ async function parseRSSFeed(feedUrl: string, source: any): Promise<any[]> {
     const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
     let match;
 
-    while ((match = itemRegex.exec(xmlText)) !== null && articles.length < 10) {
+    while ((match = itemRegex.exec(xmlText)) !== null && articles.length < 15) {
       const itemXml = match[1];
       
       const titleMatch = itemXml.match(/<title[^>]*><!\[CDATA\[(.*?)\]\]><\/title>|<title[^>]*>(.*?)<\/title>/i);
@@ -121,6 +270,18 @@ async function parseRSSFeed(feedUrl: string, source: any): Promise<any[]> {
         const cleanDescription = description.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').trim();
 
         if (cleanTitle && url) {
+          // If search query is provided, filter articles
+          if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            const titleMatch = cleanTitle.toLowerCase().includes(query);
+            const descMatch = cleanDescription.toLowerCase().includes(query);
+            
+            // Skip articles that don't match the search query
+            if (!titleMatch && !descMatch) {
+              continue;
+            }
+          }
+
           // Resolve the URL to get the real article link
           const resolvedUrl = await resolveUrl(url);
           
@@ -158,7 +319,11 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { searchQuery, region } = body;
 
+    console.log('Function called with:', { searchQuery, region });
+
     let allArticles: any[] = [];
+    let sourcesProcessed = 0;
+    let sourcesSucceeded = 0;
 
     // Fetch articles from all news sources
     for (const source of newsSources) {
@@ -167,15 +332,18 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      sourcesProcessed++;
       try {
-        const articles = await parseRSSFeed(source.rssUrl, source);
+        const articles = await parseRSSFeed(source.rssUrl, source, searchQuery);
         allArticles = allArticles.concat(articles);
+        sourcesSucceeded++;
+        console.log(`Successfully fetched ${articles.length} articles from ${source.name} for query: ${searchQuery || 'none'}`);
       } catch (error) {
         console.error(`Failed to fetch from ${source.name}:`, error);
       }
     }
 
-    // Filter by search query if provided
+    // Additional filtering by search query (as backup)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       allArticles = allArticles.filter(article => 
@@ -191,6 +359,8 @@ Deno.serve(async (req) => {
 
     // Limit to 50 articles max
     const limitedArticles = uniqueArticles.slice(0, 50);
+
+    console.log(`Found ${limitedArticles.length} articles for search: "${searchQuery}" in region: "${region}"`);
 
     if (limitedArticles.length > 0) {
       // Insert articles into database
@@ -208,8 +378,11 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         articlesScraped: limitedArticles.length,
-        message: `Successfully scraped ${limitedArticles.length} articles from RSS feeds`,
-        sources: newsSources.length
+        message: `Successfully scraped ${limitedArticles.length} articles for "${searchQuery || 'general news'}" from ${sourcesSucceeded}/${sourcesProcessed} sources`,
+        sourcesProcessed,
+        sourcesSucceeded,
+        region: region || 'all',
+        searchQuery: searchQuery || null
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

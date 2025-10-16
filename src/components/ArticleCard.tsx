@@ -1,6 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ExternalLink, Heart, StickyNote } from "lucide-react";
 
 // Decode common HTML entities from feeds
 const decodeEntities = (str: string) => {
@@ -73,6 +75,13 @@ interface ArticleCardProps {
   sourceCountry: string;
   sourceRegion: string;
   publishedAt?: string;
+  articleId?: string;
+  userId?: string;
+  isFavorited?: boolean;
+  noteText?: string;
+  noteIsPublic?: boolean;
+  onToggleFavorite?: (articleId: string) => void;
+  onOpenNotes?: (articleId: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
 }
 
 export const ArticleCard = ({
@@ -83,6 +92,13 @@ export const ArticleCard = ({
   sourceCountry,
   sourceRegion,
   publishedAt,
+  articleId,
+  userId,
+  isFavorited = false,
+  noteText,
+  noteIsPublic = false,
+  onToggleFavorite,
+  onOpenNotes,
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
   
@@ -129,6 +145,64 @@ export const ArticleCard = ({
             </span>
           )}
         </div>
+        
+        {/* Action Buttons */}
+        {userId && articleId ? (
+          <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-border/30">
+            <TooltipProvider>
+              {/* Favorite Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onToggleFavorite?.(articleId)}
+                    className={`h-8 w-8 p-0 hover:bg-red-50 hover:text-red-500 transition-all duration-200 ${
+                      isFavorited 
+                        ? 'text-red-500 hover:text-red-600' 
+                        : 'text-muted-foreground hover:text-red-500'
+                    }`}
+                  >
+                    <Heart 
+                      className={`w-4 h-4 transition-all duration-200 ${
+                        isFavorited 
+                          ? 'fill-current scale-110' 
+                          : 'hover:scale-110'
+                      }`} 
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Notes Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                        onClick={() => onOpenNotes?.(articleId, title, noteText, noteIsPublic)}
+                    className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-500 transition-all duration-200 text-muted-foreground hover:text-blue-500 relative"
+                  >
+                    <StickyNote className="w-4 h-4 hover:scale-110 transition-transform duration-200" />
+                    {noteText && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{noteText ? 'Edit Note' : 'Add Note'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        ) : (
+          <div className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/30">
+            {!userId ? 'Please log in to use favorites and notes' : 'Loading...'}
+          </div>
+        )}
       </CardContent>
       
       {/* Hover effect overlay */}
