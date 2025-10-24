@@ -6,12 +6,6 @@ import type { Database } from './types';
 const SUPABASE_URL = 'https://zrofxxvmsaaoaztorpyt.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpyb2Z4eHZtc2Fhb2F6dG9ycHl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1MDI3NDksImV4cCI6MjA3NjA3ODc0OX0.S7E4HytCd17Kzqjnf4hcxbmZxRcDTAWKM8dnFHmRWVU';
 
-// Debug environment variables
-console.log('Using hardcoded Supabase values:', {
-  SUPABASE_URL,
-  SUPABASE_PUBLISHABLE_KEY: SUPABASE_PUBLISHABLE_KEY ? 'Present' : 'Missing'
-});
-
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
