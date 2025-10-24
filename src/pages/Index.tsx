@@ -478,12 +478,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
           {/* Main Header Content */}
           <div className="text-center">
-          <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
-            Latest Now
-          </h1>
-          <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            Breaking news from around the world
-          </p>
+            <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
+              Latest Now
+            </h1>
+            <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
+              Breaking news from around the world
+            </p>
             <div className="mt-8 flex justify-center">
               <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce-gentle"></div>
               <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce-gentle mx-2" style={{ animationDelay: '0.1s' }}></div>
@@ -546,7 +546,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       <main className="container mx-auto px-4 py-12">
         <div className="flex items-center justify-between mb-6 animate-fade-in">
           <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-            {searchQuery ? `"${searchQuery}"` : "Latest Headlines"}
+            {searchQuery ? `Search Results for "${searchQuery}"` : "Latest Global News Headlines"}
           </h2>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
