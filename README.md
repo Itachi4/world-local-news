@@ -53,8 +53,8 @@ A modern, real-time news aggregator that fetches headlines from major news sourc
 
 5. **Start the development server**
    ```bash
-   npm run dev
-   ```
+npm run dev
+```
 
 6. **Open your browser**
    Navigate to `http://localhost:8080`

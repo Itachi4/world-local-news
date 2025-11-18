@@ -611,12 +611,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
           {/* Main Header Content */}
           <div className="text-center">
-            <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
-              Latest Now
-            </h1>
-            <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
-              Breaking news from around the world
-            </p>
+          <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
+            Latest Now
+          </h1>
+          <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            Breaking news from around the world
+          </p>
             <div className="mt-8 flex justify-center">
               <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce-gentle"></div>
               <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce-gentle mx-2" style={{ animationDelay: '0.1s' }}></div>
@@ -948,8 +948,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                       publicNotes={articlePublicNotes}
                       onToggleFavorite={toggleFavorite}
                       onOpenNotes={openNotesModal}
-                    />
-                  </div>
+                />
+              </div>
                 );
               })}
             </div>
@@ -975,8 +975,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                     </>
                   )}
                 </Button>
-              </div>
-            )}
+          </div>
+        )}
             
             {/* Background Loading Indicator */}
             {scraping && (
@@ -985,7 +985,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                   <RefreshCw className="w-4 h-4 text-primary animate-spin" />
                   <span className="text-sm font-medium">Fetching fresh headlines...</span>
                 </div>
-          </div>
+    </div>
             )}
           </>
         )}

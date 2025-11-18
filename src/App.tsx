@@ -32,8 +32,16 @@ const App = () => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null);
-        setShowAuth(!session?.user); // Only show auth if no user
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setUser(session?.user ?? null);
+          setShowAuth(false);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setShowAuth(true);
+        } else {
+          setUser(session?.user ?? null);
+          setShowAuth(!session?.user);
+        }
         setLoading(false);
       }
     );

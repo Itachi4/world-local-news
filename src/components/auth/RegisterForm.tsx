@@ -59,6 +59,7 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
           data: {
             full_name: formData.fullName,
           },
+          emailRedirectTo: 'https://nsewspace.com/',
         },
       });
 
