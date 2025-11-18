@@ -6,8 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, RefreshCw, User, LogIn, Globe, Heart, StickyNote } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Search, RefreshCw, User, LogIn, Globe, Heart, StickyNote, FileText, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AnalysisEditor } from "@/components/AnalysisEditor";
+import { UserSidebar } from "@/components/UserSidebar";
+import { UserContentViewer } from "@/components/UserContentViewer";
 
 const regions = [
   { value: "all", label: "All Regions" },
@@ -35,9 +40,14 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalArticles, setTotalArticles] = useState(0);
-  const [activeTab, setActiveTab] = useState<"all" | "favorites">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "favorites" | "analysis">("all");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [notes, setNotes] = useState<Map<string, { text: string; isPublic: boolean }>>(new Map());
+  const [notes, setNotes] = useState<Map<string, { text: string; isPublic: boolean; userId?: string }>>(new Map());
+  const [publicNotes, setPublicNotes] = useState<Map<string, Array<{ text: string; userId: string }>>>(new Map());
+  const [analyses, setAnalyses] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState<string>("");
+  const [editingAnalysis, setEditingAnalysis] = useState<any | null>(null);
   const [notesModal, setNotesModal] = useState<{
     isOpen: boolean;
     articleId: string;
@@ -76,23 +86,68 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
+      // Fetch current user's notes (both public and private)
+      const { data: userNotes, error: userError } = await supabase
         .from("article_notes")
         .select("article_id, note_text, is_public")
         .eq("user_id", user.id);
       
-      if (error) throw error;
+      if (userError) throw userError;
       
       const notesMap = new Map();
-      data?.forEach(note => {
+      userNotes?.forEach(note => {
         notesMap.set(note.article_id, {
           text: note.note_text,
-          isPublic: note.is_public
+          isPublic: note.is_public,
+          userId: user.id
         });
       });
       setNotes(notesMap);
+
+      // Fetch public notes from other users
+      const { data: publicNotesData, error: publicError } = await supabase
+        .from("article_notes")
+        .select("article_id, note_text, user_id")
+        .eq("is_public", true)
+        .neq("user_id", user.id);
+      
+      if (publicError) {
+        console.error("Error fetching public notes:", publicError);
+        return;
+      }
+
+      // Group public notes by article_id
+      const publicNotesMap = new Map<string, Array<{ text: string; userId: string }>>();
+      publicNotesData?.forEach(note => {
+        if (!publicNotesMap.has(note.article_id)) {
+          publicNotesMap.set(note.article_id, []);
+        }
+        publicNotesMap.get(note.article_id)!.push({
+          text: note.note_text,
+          userId: note.user_id
+        });
+      });
+      setPublicNotes(publicNotesMap);
     } catch (error) {
       console.error("Error fetching notes:", error);
+    }
+  };
+
+  // Fetch user analyses
+  const fetchAnalyses = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from("user_analyses")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      setAnalyses(data || []);
+    } catch (error) {
+      console.error("Error fetching analyses:", error);
     }
   };
 
@@ -174,27 +229,64 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         throw new Error(`Database table 'article_notes' may not exist. Please run the setup script in Supabase SQL Editor. Error: ${testError.message}`);
       }
       
-      const { error } = await supabase
+      // First check if note exists
+      const { data: existingNote } = await supabase
         .from("article_notes")
-        .upsert({
-          user_id: user.id,
-          article_id: notesModal.articleId,
-          note_text: noteText,
-          is_public: isPublic
-        }, {
-          onConflict: 'user_id,article_id'
-        });
-      
-      if (error) {
-        console.error('Supabase upsert error:', error);
-        throw error;
+        .select("id, is_public")
+        .eq("user_id", user.id)
+        .eq("article_id", notesModal.articleId)
+        .single();
+
+      let result;
+      if (existingNote) {
+        // Update existing note
+        const { data, error } = await supabase
+          .from("article_notes")
+          .update({
+            note_text: noteText,
+            is_public: isPublic,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", existingNote.id)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+        
+        result = { data, error };
+      } else {
+        // Insert new note
+        const { data, error } = await supabase
+          .from("article_notes")
+          .insert({
+            user_id: user.id,
+            article_id: notesModal.articleId,
+            note_text: noteText,
+            is_public: isPublic
+          })
+          .select()
+          .single();
+        
+        result = { data, error };
       }
       
+      if (result.error) {
+        console.error('Supabase save error:', result.error);
+        throw result.error;
+      }
+      
+      // Verify the saved data
+      console.log('Note saved successfully:', result.data);
+      console.log('is_public value:', result.data?.is_public);
+      
+      // Update local state
       setNotes(prev => {
         const newMap = new Map(prev);
         newMap.set(notesModal.articleId, { text: noteText, isPublic });
         return newMap;
       });
+      
+      // Refresh notes from database to ensure we have the latest data
+      await fetchNotes();
       
       // Close the modal after successful save
       closeNotesModal();
@@ -231,6 +323,46 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       articleId: "",
       title: "",
     });
+  };
+
+  // Delete note
+  const deleteNote = async () => {
+    if (!user || !notesModal.articleId) return;
+    
+    try {
+      const { error } = await supabase
+        .from("article_notes")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("article_id", notesModal.articleId);
+
+      if (error) throw error;
+
+      // Update local state
+      setNotes(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(notesModal.articleId);
+        return newMap;
+      });
+
+      // Refresh notes from database
+      await fetchNotes();
+
+      // Close the modal
+      closeNotesModal();
+
+      toast({
+        title: "Note deleted",
+        description: "Your note has been deleted successfully",
+      });
+    } catch (error: any) {
+      console.error("Error deleting note:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete note",
+        variant: "destructive",
+      });
+    }
   };
 
   const fetchArticles = async (page = 1, append = false) => {
@@ -425,6 +557,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     if (user) {
       fetchFavorites();
       fetchNotes();
+      fetchAnalyses();
     }
   }, [user]);
 
@@ -557,8 +690,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         </div>
         
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "all" | "favorites")} className="mb-8">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "all" | "favorites" | "analysis")} className="mb-8">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="all" className="flex items-center gap-2">
               <Globe className="w-4 h-4" />
               All Articles
@@ -566,6 +699,10 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
             <TabsTrigger value="favorites" className="flex items-center gap-2">
               <Heart className="w-4 h-4" />
               Favorites ({favorites.size})
+            </TabsTrigger>
+            <TabsTrigger value="analysis" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Analysis
             </TabsTrigger>
           </TabsList>
           
@@ -576,15 +713,160 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           <TabsContent value="favorites" className="mt-6">
             {renderArticles(filteredArticles)}
           </TabsContent>
+
+          <TabsContent value="analysis" className="mt-6">
+            <div className="flex gap-6 min-h-[600px]">
+              <UserSidebar 
+                currentUserId={user?.id}
+                onSelectUser={(userId, userName) => {
+                  setSelectedUserId(userId);
+                  setSelectedUserName(userName);
+                  setEditingAnalysis(null);
+                }} 
+              />
+              
+              {selectedUserId ? (
+                <UserContentViewer
+                  userId={selectedUserId}
+                  userName={selectedUserName}
+                  currentUserId={user?.id}
+                  onClose={() => {
+                    setSelectedUserId(null);
+                    setSelectedUserName("");
+                  }}
+                  onEdit={(analysis) => {
+                    setSelectedUserId(null);
+                    setSelectedUserName("");
+                    setEditingAnalysis(analysis);
+                  }}
+                  onDelete={fetchAnalyses}
+                />
+              ) : (
+                <div className="flex-1">
+                  <div className="mb-6">
+                    <h3 className="text-xl font-semibold mb-4">
+                      {editingAnalysis ? "Edit Analysis" : "Create New Analysis"}
+                    </h3>
+                    <AnalysisEditor 
+                      userId={user.id} 
+                      onSave={() => {
+                        fetchAnalyses();
+                        setEditingAnalysis(null);
+                      }}
+                      editingAnalysis={editingAnalysis}
+                      onCancel={() => setEditingAnalysis(null)}
+                    />
+                  </div>
+                  
+                  <div className="mt-8">
+                    <h3 className="text-xl font-semibold mb-4">My Analyses</h3>
+                    {analyses.length === 0 ? (
+                      <div className="text-center py-12 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50">
+                        <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                        <p className="text-muted-foreground">No analyses yet. Create one above!</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {analyses.map((analysis) => (
+                          <Card key={analysis.id} className="hover:shadow-lg transition-shadow">
+                            <CardHeader>
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-lg">{analysis.title}</CardTitle>
+                                <div className="flex items-center gap-2">
+                                  {analysis.is_public && (
+                                    <Badge variant="secondary" className="text-xs">Public</Badge>
+                                  )}
+                                  {analysis.video_url && (
+                                    <Badge variant="outline" className="text-xs flex items-center gap-1">
+                                      <Video className="w-3 h-3" />
+                                      Video
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
+                                {analysis.content}
+                              </p>
+                              {analysis.video_url && analysis.thumbnail_url && (
+                                <div className="mb-4">
+                                  <img
+                                    src={analysis.thumbnail_url}
+                                    alt={analysis.title}
+                                    className="w-full h-32 object-cover rounded-md"
+                                  />
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between pt-2 border-t">
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(analysis.created_at).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })}
+                                </p>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setEditingAnalysis(analysis)}
+                                    className="h-7 px-2 text-xs"
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={async () => {
+                                      if (confirm("Are you sure you want to delete this analysis?")) {
+                                        try {
+                                          const { error } = await supabase
+                                            .from('user_analyses')
+                                            .delete()
+                                            .eq('id', analysis.id)
+                                            .eq('user_id', user.id);
+                                          
+                                          if (error) throw error;
+                                          fetchAnalyses();
+                                          toast({
+                                            title: "Analysis deleted",
+                                            description: "Your analysis has been deleted",
+                                          });
+                                        } catch (error: any) {
+                                          toast({
+                                            title: "Error",
+                                            description: error.message || "Failed to delete analysis",
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }
+                                    }}
+                                    className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </TabsContent>
         </Tabs>
       </main>
 
       {/* Notes Dropdown */}
-      {console.log('About to render ArticleNotesModal with isOpen:', notesModal.isOpen)}
       <ArticleNotesModal
         isOpen={notesModal.isOpen}
         onClose={closeNotesModal}
         onSave={saveNote}
+        onDelete={deleteNote}
         initialNoteText={notesModal.noteText}
         initialIsPublic={notesModal.noteIsPublic}
         articleTitle={notesModal.title}
@@ -640,6 +922,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {articlesToRender.map((article, index) => {
                 const noteData = notes.get(article.id);
+                const articlePublicNotes = publicNotes.get(article.id) || [];
                 return (
               <div 
                 key={article.id} 
@@ -662,6 +945,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                       isFavorited={favorites.has(article.id)}
                       noteText={noteData?.text}
                       noteIsPublic={noteData?.isPublic}
+                      publicNotes={articlePublicNotes}
                       onToggleFavorite={toggleFavorite}
                       onOpenNotes={openNotesModal}
                     />

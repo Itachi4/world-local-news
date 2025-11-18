@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { StickyNote, Save, X } from "lucide-react";
+import { StickyNote, Save, X, Trash2 } from "lucide-react";
 
 interface ArticleNotesModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (noteText: string, isPublic: boolean) => void;
+  onDelete?: () => void;
   initialNoteText?: string;
   initialIsPublic?: boolean;
   articleTitle?: string;
@@ -18,6 +19,7 @@ export const ArticleNotesModal = ({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   initialNoteText = "",
   initialIsPublic = false,
   articleTitle = "",
@@ -25,6 +27,8 @@ export const ArticleNotesModal = ({
   const [noteText, setNoteText] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const hasExistingNote = !!initialNoteText;
 
   useEffect(() => {
     if (isOpen) {
@@ -53,6 +57,24 @@ export const ArticleNotesModal = ({
     setNoteText(initialNoteText);
     setIsPublic(initialIsPublic);
     onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    
+    if (!confirm("Are you sure you want to delete this note? This action cannot be undone.")) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await onDelete();
+      onClose();
+    } catch (error) {
+      console.error("Error deleting note:", error);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const maxLength = 1000;
@@ -130,18 +152,38 @@ export const ArticleNotesModal = ({
 
           {/* Buttons */}
           <div className="flex gap-2 mt-6">
+            {hasExistingNote && onDelete && (
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isSaving || isDeleting}
+                className="flex-1"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleCancel}
-              disabled={isSaving}
-              className="flex-1"
+              disabled={isSaving || isDeleting}
+              className={hasExistingNote && onDelete ? "flex-1" : "flex-1"}
             >
               <X className="w-4 h-4 mr-2" />
               Cancel
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!noteText.trim() || isSaving || noteText.length > maxLength}
+              disabled={!noteText.trim() || isSaving || isDeleting || noteText.length > maxLength}
               className="flex-1"
             >
               {isSaving ? (

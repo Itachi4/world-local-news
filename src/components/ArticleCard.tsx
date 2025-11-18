@@ -3,6 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExternalLink, Heart, StickyNote } from "lucide-react";
+import { useState } from "react";
+import { PublicNoteModal } from "./PublicNoteModal";
 
 // Decode common HTML entities from feeds
 const decodeEntities = (str: string) => {
@@ -80,6 +82,7 @@ interface ArticleCardProps {
   isFavorited?: boolean;
   noteText?: string;
   noteIsPublic?: boolean;
+  publicNotes?: Array<{ text: string; userId: string }>;
   onToggleFavorite?: (articleId: string) => void;
   onOpenNotes?: (articleId: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
 }
@@ -97,10 +100,12 @@ export const ArticleCard = ({
   isFavorited = false,
   noteText,
   noteIsPublic = false,
+  publicNotes = [],
   onToggleFavorite,
   onOpenNotes,
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
+  const [selectedNote, setSelectedNote] = useState<{ text: string; userId: string } | null>(null);
   
   return (
     <Card className="group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden animate-fade-in hover-lift">
@@ -145,6 +150,35 @@ export const ArticleCard = ({
             </span>
           )}
         </div>
+        
+        {/* Public Notes from Other Users */}
+        {publicNotes && publicNotes.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <div className="text-xs font-semibold text-muted-foreground mb-2">Public Notes:</div>
+            <div className="space-y-2">
+              {publicNotes.map((note, idx) => {
+                const isLongNote = note.text.length > 100;
+                const displayText = isLongNote ? note.text.substring(0, 100) + "..." : note.text;
+                
+                return (
+                  <div 
+                    key={idx} 
+                    className={`text-xs bg-muted/50 p-2 rounded border-l-2 border-primary/30 ${
+                      isLongNote ? 'cursor-pointer hover:bg-muted transition-colors' : ''
+                    }`}
+                    onClick={() => isLongNote && setSelectedNote(note)}
+                    title={isLongNote ? "Click to view full note" : undefined}
+                  >
+                    <p className="text-foreground/80">{displayText}</p>
+                    {isLongNote && (
+                      <p className="text-xs text-primary mt-1 font-medium">Click to read more...</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         
         {/* Action Buttons */}
         {userId && articleId ? (
@@ -207,6 +241,16 @@ export const ArticleCard = ({
       
       {/* Hover effect overlay */}
       <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+      
+      {/* Public Note Modal */}
+      {selectedNote && (
+        <PublicNoteModal
+          isOpen={!!selectedNote}
+          onClose={() => setSelectedNote(null)}
+          noteText={selectedNote.text}
+          userId={selectedNote.userId}
+        />
+      )}
     </Card>
   );
 };
