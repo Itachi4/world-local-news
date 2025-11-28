@@ -56,6 +56,19 @@ interface RegionConfig {
 
 const regionConfigs: RegionConfig[] = [
   {
+    region: 'Africa',
+    countries: [
+      { code: 'ZA', name: 'South Africa' },
+      { code: 'NG', name: 'Nigeria' },
+      { code: 'EG', name: 'Egypt' },
+      { code: 'KE', name: 'Kenya' },
+      { code: 'GH', name: 'Ghana' },
+      { code: 'MA', name: 'Morocco' },
+      { code: 'ET', name: 'Ethiopia' },
+      { code: 'TZ', name: 'Tanzania' },
+    ]
+  },
+  {
     region: 'Asia',
     countries: [
       { code: 'IN', name: 'India' },
@@ -66,14 +79,6 @@ const regionConfigs: RegionConfig[] = [
       { code: 'KR', name: 'South Korea' },
       { code: 'PK', name: 'Pakistan' },
       { code: 'AE', name: 'United Arab Emirates' },
-    ]
-  },
-  {
-    region: 'North America',
-    countries: [
-      { code: 'US', name: 'United States' },
-      { code: 'CA', name: 'Canada' },
-      { code: 'MX', name: 'Mexico' },
     ]
   },
   {
@@ -89,9 +94,39 @@ const regionConfigs: RegionConfig[] = [
       { code: 'PL', name: 'Poland' },
     ]
   },
+  {
+    region: 'North America',
+    countries: [
+      { code: 'US', name: 'United States' },
+      { code: 'CA', name: 'Canada' },
+      { code: 'MX', name: 'Mexico' },
+    ]
+  },
+  {
+    region: 'Oceania',
+    countries: [
+      { code: 'AU', name: 'Australia' },
+      { code: 'NZ', name: 'New Zealand' },
+      { code: 'FJ', name: 'Fiji' },
+      { code: 'PG', name: 'Papua New Guinea' },
+    ]
+  },
+  {
+    region: 'South America',
+    countries: [
+      { code: 'BR', name: 'Brazil' },
+      { code: 'AR', name: 'Argentina' },
+      { code: 'CO', name: 'Colombia' },
+      { code: 'CL', name: 'Chile' },
+      { code: 'PE', name: 'Peru' },
+      { code: 'VE', name: 'Venezuela' },
+      { code: 'EC', name: 'Ecuador' },
+      { code: 'UY', name: 'Uruguay' },
+    ]
+  },
 ];
 
-async function fetchNewsFromRegion(region: RegionConfig, category: string | null, limitCountries = false, maxArticles = 6): Promise<any[]> {
+async function fetchNewsFromRegion(region: RegionConfig, category: string | null, limitCountries = false, maxArticles = 9999): Promise<any[]> {
   // For faster initial results, fetch from first 3 countries per region
   // For full fetch, get all countries
   const countriesToFetch = limitCountries ? region.countries.slice(0, 3) : region.countries;
@@ -101,8 +136,11 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
       const categoryLabel = category ? ` [${category}]` : '';
       console.log(`Fetching news from ${country.name} (${region.region})${categoryLabel}...`)
 
-      // Build RSS URL in the format: https://news.google.com/rss/search?q=CATEGORY&gl=COUNTRY&hl=en&ceid=COUNTRY:en
-      // Example: https://news.google.com/rss/search?q=sports+OR+games&gl=IN&hl=en&ceid=IN:en
+      // Build RSS URL in the format: https://news.google.com/rss/search?q=<QUERY>&gl=<COUNTRY_CODE>&hl=en&ceid=<COUNTRY_CODE>:en
+      // For general: q=general
+      // For categories: q=category+OR+terms
+      // Example: https://news.google.com/rss/search?q=general&gl=AR&hl=en&ceid=AR:en
+      // Example: https://news.google.com/rss/search?q=sports+OR+games&gl=AR&hl=en&ceid=AR:en
       let url: string;
       
       if (category && categoryQueries[category]) {
@@ -114,8 +152,8 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
         console.log(`🔗 RSS URL [${category}]: ${url}`);
         console.log(`   Country: ${country.name} (${country.code}), Region: ${region.region}`);
       } else {
-        // General news: /search?gl=COUNTRY&hl=en&ceid=COUNTRY:en (no q parameter)
-        url = `${GOOGLE_NEWS_RSS_BASE}/search?gl=${country.code}&hl=en&ceid=${country.code}:en`;
+        // General news: /search?q=general&gl=COUNTRY&hl=en&ceid=COUNTRY:en
+        url = `${GOOGLE_NEWS_RSS_BASE}/search?q=general&gl=${country.code}&hl=en&ceid=${country.code}:en`;
         console.log(`🔗 RSS URL [General]: ${url}`);
         console.log(`   Country: ${country.name} (${country.code}), Region: ${region.region}`);
       }
@@ -275,11 +313,11 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       category: articleCategory,
     })
 
-    // Parse up to maxArticles from each country's RSS feed
-    // This ensures we get a good selection from each country
-    if (articles.length >= maxArticles) break
+    // Don't break early - parse ALL articles from RSS feed
+    // We'll limit later when saving to database
   }
 
+  console.log(`✅ Parsed ${articles.length} total articles from ${countryName} RSS feed`);
   return articles;
 }
 
@@ -318,9 +356,15 @@ Deno.serve(async (req) => {
       requestBody = {};
     }
     
+    // Debug: Log raw request body
+    console.log('📥 Raw request body:', JSON.stringify(requestBody));
+    
     const { category, region, limit } = requestBody || { category: null, region: null, limit: 12 };
 
     console.log('Starting news scraping from Google News RSS feeds...');
+    console.log(`📊 Parsed parameters: category="${category}", region="${region}", limit=${limit}`);
+    console.log(`📊 Region type: ${typeof region}, value: ${JSON.stringify(region)}`);
+    
     if (category) {
       console.log(`Category: "${category}"`);
     }
@@ -328,54 +372,92 @@ Deno.serve(async (req) => {
       console.log(`Region: "${region}"`);
     }
     
+    // Debug: Log all available regions
+    console.log(`Available regions in config: ${regionConfigs.map(r => `"${r.region}"`).join(', ')}`);
+    
     // Fetch news from specified region or all regions
     const allArticles: any[] = [];
     
     // Limit regions when "all" is selected to prevent timeout
-    let regionsToSearch = region 
-      ? regionConfigs.filter(r => r.region === region)
-      : regionConfigs.slice(0, 3); // Only fetch from first 3 regions when "all" is selected
+    let regionsToSearch: RegionConfig[] = [];
+    if (region && typeof region === 'string' && region.trim().length > 0) {
+      // Normalize region name (trim whitespace, case-insensitive comparison)
+      const normalizedRegion = region.trim();
+      regionsToSearch = regionConfigs.filter(r => r.region.trim().toLowerCase() === normalizedRegion.toLowerCase());
+      console.log(`Filtering for region "${region}" (normalized: "${normalizedRegion}")`);
+      console.log(`Found ${regionsToSearch.length} matching region(s)`);
+      if (regionsToSearch.length === 0) {
+        console.error(`❌ No matching region found for "${region}". Available regions: ${regionConfigs.map(r => r.region).join(', ')}`);
+        // Return error response if region not found
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Region "${region}" not found. Available regions: ${regionConfigs.map(r => r.region).join(', ')}`,
+            articlesScraped: 0
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400 
+          }
+        );
+      }
+    } else {
+      // Only fetch from first 3 regions when "all" is selected to prevent timeout
+      regionsToSearch = regionConfigs.slice(0, 3);
+      console.log(`No specific region requested (region="${region}"), using first 3 regions (to prevent timeout)`);
+    }
     
     console.log(`Searching ${regionsToSearch.length} region(s): ${regionsToSearch.map(r => r.region).join(', ')}`);
     
-    // Fetch articles from all countries - don't limit total, let all countries contribute
-    // The limit parameter is just for initial fetch speed, but we want articles from all countries
-    const targetLimit = limit || 100; // Increased default to get articles from all countries
-    // Fetch a good number of articles per country to ensure diversity
-    const articlesPerCountry = Math.max(12, Math.ceil(targetLimit / Math.max(regionsToSearch.length * 8, 1))); // 8 countries max per region
-    console.log(`Fetching articles from all countries (${articlesPerCountry} per country, target: ${targetLimit})...`);
+    // Strategy: Fetch ALL articles from RSS feeds, then save in batches
+    // First batch (30 articles) for immediate display, then continue with the rest
+    const initialBatchSize = 30; // Quick first batch for users to see
+    const targetLimit = limit || 200; // Fetch more articles total
     
-    // Fetch from all countries in the region - don't stop early, get articles from all
+    console.log(`Fetching ALL articles from RSS feeds (no per-country limit), then saving in batches...`);
+    console.log(`Initial batch: ${initialBatchSize} articles, then continue fetching up to ${targetLimit} total`);
+    
+    // Fetch from all countries in the region - parse ALL articles from RSS feeds
     for (const regionConfig of regionsToSearch) {
-      // Fetch from all countries in the region, get articles per country
-      const articles = await fetchNewsFromRegion(regionConfig, category, false, articlesPerCountry);
+      // Fetch ALL articles from each country (no maxArticles limit)
+      const articles = await fetchNewsFromRegion(regionConfig, category, false, 9999); // Large number to get all
       console.log(`Got ${articles.length} articles from ${regionConfig.region}`);
       allArticles.push(...articles);
     }
     
-    // Shuffle and limit after getting from all countries to ensure diversity
-    // This ensures we get articles from multiple countries, not just the first one
-    if (allArticles.length > targetLimit) {
-      // Shuffle to mix countries
-      for (let i = allArticles.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [allArticles[i], allArticles[j]] = [allArticles[j], allArticles[i]];
-      }
-      allArticles.splice(targetLimit);
-    }
+    // Sort all articles by date (newest first)
+    allArticles.sort((a, b) => {
+      const dateA = new Date(a.published_at).getTime();
+      const dateB = new Date(b.published_at).getTime();
+      return dateB - dateA;
+    });
     
-    console.log(`Fetched ${allArticles.length} articles (target: ${targetLimit})`);
+    // Remove duplicates based on URL (keep first occurrence)
+    const seenUrls = new Set<string>();
+    const uniqueArticles = allArticles.filter(article => {
+      if (seenUrls.has(article.url)) {
+        return false;
+      }
+      seenUrls.add(article.url);
+      return true;
+    });
+    
+    console.log(`📊 Total unique articles fetched: ${uniqueArticles.length} (removed ${allArticles.length - uniqueArticles.length} duplicates)`);
+    
+    // Limit to target if we have too many
+    const articlesToSave = uniqueArticles.slice(0, targetLimit);
+    console.log(`📊 Saving ${articlesToSave.length} articles (limited from ${uniqueArticles.length})`);
     
     // Log article breakdown by country
-    if (allArticles.length > 0) {
+    if (articlesToSave.length > 0) {
       const countryBreakdown: Record<string, number> = {};
-      allArticles.forEach(article => {
+      articlesToSave.forEach(article => {
         const country = article.source_country || 'unknown';
         countryBreakdown[country] = (countryBreakdown[country] || 0) + 1;
       });
       
       console.log('📊 Articles by country:', countryBreakdown);
-      console.log('Sample articles:', allArticles.slice(0, 5).map(a => ({
+      console.log('Sample articles:', articlesToSave.slice(0, 5).map(a => ({
         title: a.title?.substring(0, 50),
         category: a.category,
         region: a.source_region,
@@ -385,26 +467,53 @@ Deno.serve(async (req) => {
       console.warn('⚠️ No articles fetched! Check RSS feeds and parsing logic.');
     }
 
-    // Insert articles into database (ignore duplicates)
-    if (allArticles.length > 0) {
-      const result = await supabase
+    // Save articles in batches: first batch immediately, then the rest
+    let totalInserted = 0;
+    
+    if (articlesToSave.length > 0) {
+      // Phase 1: Save initial batch quickly (for immediate user display)
+      const initialBatch = articlesToSave.slice(0, initialBatchSize);
+      console.log(`💾 Phase 1: Saving initial batch of ${initialBatch.length} articles...`);
+      
+      const initialResult = await supabase
         .from('articles')
-        .upsert(allArticles, { onConflict: 'url', ignoreDuplicates: true });
+        .upsert(initialBatch, { onConflict: 'url', ignoreDuplicates: true });
 
-      if (!result) {
-        console.error('❌ Upsert returned undefined');
-        throw new Error('Database upsert failed - no response from Supabase');
+      if (initialResult?.error) {
+        console.error('❌ Error inserting initial batch:', initialResult.error);
+      } else {
+        totalInserted += initialBatch.length;
+        console.log(`✅ Phase 1: Successfully inserted ${initialBatch.length} articles (users can see these now)`);
       }
+      
+      // Phase 2: Save remaining articles in batches
+      if (articlesToSave.length > initialBatchSize) {
+        const remainingArticles = articlesToSave.slice(initialBatchSize);
+        const batchSize = 50; // Save in batches of 50
+        
+        console.log(`💾 Phase 2: Saving remaining ${remainingArticles.length} articles in batches of ${batchSize}...`);
+        
+        for (let i = 0; i < remainingArticles.length; i += batchSize) {
+          const batch = remainingArticles.slice(i, i + batchSize);
+          const batchResult = await supabase
+            .from('articles')
+            .upsert(batch, { onConflict: 'url', ignoreDuplicates: true });
 
-      const { data, error } = result;
-
-      if (error) {
-        console.error('❌ Error inserting articles:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        throw error;
+          if (batchResult?.error) {
+            console.error(`❌ Error inserting batch ${Math.floor(i / batchSize) + 1}:`, batchResult.error);
+          } else {
+            totalInserted += batch.length;
+            console.log(`✅ Phase 2: Batch ${Math.floor(i / batchSize) + 1} - Inserted ${batch.length} articles (total: ${totalInserted})`);
+          }
+          
+          // Small delay between batches to avoid overwhelming the database
+          if (i + batchSize < remainingArticles.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
       }
-
-      console.log(`✅ Successfully inserted ${allArticles.length} articles into database`);
+      
+      console.log(`✅ Successfully inserted ${totalInserted} total articles into database`);
     } else {
       console.warn('⚠️ No articles to insert - function completed but found 0 articles');
     }
@@ -412,8 +521,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        articlesScraped: allArticles.length,
-        message: 'News scraping completed successfully'
+        articlesScraped: totalInserted || articlesToSave.length || 0,
+        totalFetched: uniqueArticles.length,
+        message: `News scraping completed: ${totalInserted || articlesToSave.length || 0} articles saved`
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
