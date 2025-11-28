@@ -26,6 +26,7 @@ export type Database = {
           source_region: string
           title: string
           url: string
+          category: string
         }
         Insert: {
           created_at?: string
@@ -38,6 +39,7 @@ export type Database = {
           source_region: string
           title: string
           url: string
+          category?: string
         }
         Update: {
           created_at?: string
@@ -50,6 +52,7 @@ export type Database = {
           source_region?: string
           title?: string
           url?: string
+          category?: string
         }
         Relationships: []
       }

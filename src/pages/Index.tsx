@@ -2,13 +2,12 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ArticleCard } from "@/components/ArticleCard";
 import ArticleNotesModal from "@/components/ArticleNotesModal";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, RefreshCw, User, LogIn, Globe, Heart, StickyNote, FileText, Video } from "lucide-react";
+import { Search, RefreshCw, User, LogIn, Globe, Heart, StickyNote, FileText, Video, Cpu, DollarSign, Building2, Palette, Trophy, Plane, Church } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AnalysisEditor } from "@/components/AnalysisEditor";
 import { UserSidebar } from "@/components/UserSidebar";
@@ -24,6 +23,17 @@ const regions = [
   { value: "South America", label: "South America" },
 ];
 
+const categories = [
+  { value: "general", label: "General", icon: Globe },
+  { value: "tech-ai", label: "Tech & AI", icon: Cpu },
+  { value: "business-finance", label: "Business & Finance", icon: DollarSign },
+  { value: "politics", label: "Politics", icon: Building2 },
+  { value: "arts-entertainment-fashion", label: "Arts, Entertainment & Fashion", icon: Palette },
+  { value: "sports-games", label: "Sports & Games", icon: Trophy },
+  { value: "travel-leisure", label: "Travel & Leisure", icon: Plane },
+  { value: "religion-spirituality", label: "Religion & Spirituality", icon: Church },
+];
+
 interface IndexProps {
   user: any;
   onLogin: () => void;
@@ -33,7 +43,7 @@ interface IndexProps {
 const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("general");
   const [selectedRegion, setSelectedRegion] = useState("all");
   const [scraping, setScraping] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -365,7 +375,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   };
 
-  const fetchArticles = async (page = 1, append = false) => {
+  const fetchArticles = async (page = 1, append = false): Promise<number> => {
     if (append) {
       setLoadingMore(true);
     } else {
@@ -384,13 +394,67 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         query = query.eq("source_region", selectedRegion);
       }
 
-      if (searchQuery) {
-        query = query.or(`title.ilike.%${searchQuery}%,snippet.ilike.%${searchQuery}%`);
+      // Filter by category
+      // For "general", show all articles (no category filter)
+      // For specific categories, filter by category
+      if (selectedCategory !== "general") {
+        query = query.eq("category", selectedCategory);
       }
 
       const { data, error, count } = await query;
+      
+      // Log for debugging
+      console.log(`📊 Database query: category="${selectedCategory}", region="${selectedRegion}", found ${count || 0} articles`);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Database query error:', error);
+        const errorMessage = error?.message || String(error) || '';
+        
+        // If error is about missing column, show helpful message and fall back
+        if (errorMessage.includes('column') && errorMessage.includes('category')) {
+          console.warn("⚠️ Category column doesn't exist yet. Please run the database migration.");
+          console.warn("Falling back to fetching all articles without category filter...");
+          
+          // Fall back to fetching all articles without category filter
+          let fallbackQuery = supabase
+            .from("articles")
+            .select("*", { count: 'exact' })
+            .order("published_at", { ascending: false })
+            .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+          
+          if (selectedRegion !== "all") {
+            fallbackQuery = fallbackQuery.eq("source_region", selectedRegion);
+          }
+          
+          const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
+          if (fallbackError) {
+            console.error('❌ Fallback query also failed:', fallbackError);
+            throw fallbackError;
+          }
+          
+          const newArticles = fallbackData || [];
+          setTotalArticles(fallbackCount || 0);
+          
+          if (append) {
+            setArticles(prev => [...prev, ...newArticles]);
+          } else {
+            setArticles(newArticles);
+          }
+          
+          setHasMore(newArticles.length === ARTICLES_PER_PAGE);
+          setCurrentPage(page);
+          
+          // Show warning toast
+          toast({
+            title: "Category filter unavailable",
+            description: "Please run the database migration to enable category filtering.",
+            variant: "destructive",
+          });
+          
+          return newArticles.length;
+        }
+        throw error;
+      }
       
       const newArticles = data || [];
       setTotalArticles(count || 0);
@@ -403,6 +467,13 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       
       setHasMore(newArticles.length === ARTICLES_PER_PAGE);
       setCurrentPage(page);
+      
+      // Log for debugging
+      if (selectedCategory !== "general" && newArticles.length === 0) {
+        console.log(`No articles found for category "${selectedCategory}" in region "${selectedRegion}". Total articles in DB: ${count || 0}`);
+      }
+      
+      return newArticles.length;
     } catch (error) {
       console.error("Error fetching articles:", error);
       toast({
@@ -410,6 +481,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         description: "Failed to load articles",
         variant: "destructive",
       });
+      return 0;
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -418,33 +490,70 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
   const handleScrape = async () => {
     setScraping(true);
+    
+    // Show initial fetching message
+    toast({
+      title: "Fetching headlines...",
+      description: `Getting ${categories.find(c => c.value === selectedCategory)?.label || "latest"} news from ${selectedRegion === "all" ? "all regions" : selectedRegion}`,
+    });
+    
     try {
       // First, show existing articles immediately
       await fetchArticles(1, false);
       
-      // Create a timeout promise
+      // Create a timeout promise - increased to 45 seconds for initial fetch
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout - function took too long to respond')), 30000); // 30 second timeout
+        setTimeout(() => reject(new Error('Request timeout - function took too long to respond')), 45000); // 45 second timeout
       });
       
-      // Create the function call promise
+      // Create the function call promise with category
+      const categoryValue = selectedCategory === "general" ? null : selectedCategory;
+      console.log('Frontend sending:', { selectedCategory, categoryValue, region: selectedRegion });
+      
+        // Initial fetch: get more articles to ensure good coverage from all countries
+        const requestBody = { 
+          category: categoryValue, 
+          region: selectedRegion === "all" ? null : selectedRegion,
+          limit: 100  // Fetch 100 articles to get good coverage from all countries
+        };
+      
+      console.log('📡 Fetching articles with:', requestBody);
+      console.log('🔗 Expected RSS URLs will be logged in Supabase Edge Function logs');
+      
       const functionPromise = supabase.functions.invoke("scrape-news", {
-        body: { searchQuery: null, region: selectedRegion === "all" ? null : selectedRegion }
+        body: requestBody
       });
       
       // Race between timeout and function call
+      console.log('⏱️ Starting fetch with 45 second timeout...');
+      const startTime = Date.now();
       const result = await Promise.race([functionPromise, timeoutPromise]) as any;
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+      console.log(`✅ Fetch completed in ${elapsedTime} seconds`);
+      
       const { data, error } = result;
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error from edge function:', error);
+        throw error;
+      }
       
-      toast({
-        title: "Headlines fetched successfully",
-        description: `Fetched ${data.articlesScraped} articles`,
-      });
+      console.log('📊 Response from edge function:', data);
       
       // Refresh articles after scraping to show new ones
-      await fetchArticles(1, false);
+      // Wait a moment for database to update
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const displayedCount = await fetchArticles(1, false);
+      
+      console.log(`📈 Scraped ${data.articlesScraped} articles, displaying ${displayedCount} articles`);
+      
+      toast({
+        title: data.articlesScraped > 0 ? "Headlines fetched successfully" : "No new articles found",
+        description: data.articlesScraped > 0 
+          ? `Fetched ${data.articlesScraped} articles. ${displayedCount > 0 ? `${displayedCount} articles displayed.` : 'Articles fetched but not matching current filters.'}`
+          : 'No articles were found. Try a different category or region.',
+        variant: data.articlesScraped === 0 ? "destructive" : "default",
+      });
     } catch (error) {
       console.error("Error scraping news:", error);
       
@@ -467,81 +576,44 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   };
 
-  const handleSearchArticles = async () => {
-    if (!searchQuery.trim()) {
-      toast({
-        title: "Enter a search term",
-        description: "Please enter a keyword to search for articles",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setScraping(true);
-    try {
-      // Clear existing articles to show loading state
-      setArticles([]);
-      setTotalArticles(0);
-      
-      // Create a timeout promise
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout - function took too long to respond')), 30000); // 30 second timeout
-      });
-      
-      // Create the function call promise
-      const functionPromise = supabase.functions.invoke("scrape-news", {
-        body: { searchQuery: searchQuery.trim(), region: selectedRegion === "all" ? null : selectedRegion }
-      });
-      
-      // Race between timeout and function call
-      const result = await Promise.race([functionPromise, timeoutPromise]) as any;
-      const { data, error } = result;
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    
+    // If we're on the first page and have few articles, fetch more from the edge function
+    if (currentPage === 1 && articles.length < 20) {
+      setLoadingMore(true);
+      try {
+        const categoryValue = selectedCategory === "general" ? null : selectedCategory;
+        const functionPromise = supabase.functions.invoke("scrape-news", {
+          body: { 
+            category: categoryValue, 
+            region: selectedRegion === "all" ? null : selectedRegion,
+            limit: 100  // Fetch more articles to get good coverage
+          }
+        });
+        
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Request timeout')), 30000);
+        });
+        
+        const result = await Promise.race([functionPromise, timeoutPromise]) as any;
+        const { data, error } = result;
       
       if (error) throw error;
       
-      console.log('Search function response:', data);
-      
-      // Show success message
-      if (data.articlesScraped > 0) {
-      toast({
-        title: "Search completed",
-        description: `Found ${data.articlesScraped} articles about "${searchQuery}"`,
-      });
-      } else {
-        toast({
-          title: "No articles found",
-          description: `No articles found for "${searchQuery}" in ${selectedRegion === "all" ? "all regions" : selectedRegion}`,
-          variant: "destructive",
-        });
-      }
-      
-      // Refresh articles after scraping to show new results
-      await fetchArticles(1, false);
+        // Refresh articles from database
+        await fetchArticles(currentPage + 1, true);
     } catch (error) {
-      console.error("Error searching articles:", error);
-      
-      // Check if it's a timeout error
-      if (error.message.includes('timeout')) {
-        toast({
-          title: "Request Timeout",
-          description: "The search took too long to respond. Please try again.",
-          variant: "destructive",
-        });
-      } else {
-      toast({
-        title: "Error searching articles",
-        description: "Failed to search for articles",
-        variant: "destructive",
-      });
-      }
+        console.error("Error loading more articles:", error);
+        // Fall back to regular pagination if edge function fails
+        await fetchArticles(currentPage + 1, true);
     } finally {
-      setScraping(false);
+        setLoadingMore(false);
+      }
+    } else {
+      // Regular pagination for subsequent pages
+      await fetchArticles(currentPage + 1, true);
     }
-  };
-
-  const handleLoadMore = async () => {
-    if (loadingMore || !hasMore) return;
-    await fetchArticles(currentPage + 1, true);
   };
 
   // Filter articles based on active tab
@@ -549,9 +621,44 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     ? articles.filter(article => favorites.has(article.id))
     : articles;
 
+  // Auto-fetch articles when category or region changes
   useEffect(() => {
-    fetchArticles();
-  }, [selectedRegion]);
+    const autoFetch = async () => {
+      // First, fetch existing articles from database
+      const count = await fetchArticles(1, false);
+      
+      // Always auto-fetch new headlines when category or region changes
+      // This ensures fresh content is available
+      console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", found ${count} existing articles`);
+      
+      // Call handleScrape in background (don't await to avoid blocking UI)
+      const categoryValue = selectedCategory === "general" ? null : selectedCategory;
+      const requestBody = { 
+        category: categoryValue, 
+        region: selectedRegion === "all" ? null : selectedRegion,
+        limit: 100
+      };
+      
+      supabase.functions.invoke("scrape-news", { body: requestBody })
+        .then(async (result: any) => {
+          const { data, error } = result;
+          if (error) {
+            console.error('Auto-fetch error:', error);
+            return;
+          }
+          
+          // Wait a moment for database to update, then refresh articles
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await fetchArticles(1, false);
+        })
+        .catch(err => {
+          console.error('Auto-fetch error:', err);
+        });
+    };
+    
+    autoFetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, selectedRegion]);
 
   useEffect(() => {
     if (user) {
@@ -560,12 +667,6 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       fetchAnalyses();
     }
   }, [user]);
-
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleSearchArticles();
-  };
 
   // If no user, don't render the main content
   if (!user) {
@@ -626,24 +727,35 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         </div>
       </header>
 
-      {/* Search and Filter Bar */}
+      {/* Category Tabs and Filter Bar */}
       <div className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur-md shadow-md animate-slide-up">
         <div className="container mx-auto px-4 py-5">
-          <form onSubmit={handleSearch} className="flex gap-3 flex-wrap items-center">
-            <div className="flex-1 min-w-[280px]">
-              <div className="relative group">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 group-focus-within:text-primary transition-colors" />
-                <Input
-                  type="text"
-                  placeholder="Search by keyword..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-11 border-border/50 focus:border-primary transition-all duration-300 focus:ring-2 focus:ring-primary/20 hover:border-primary/50"
-                />
+          <div className="flex flex-col gap-4">
+            {/* Category Tabs */}
+            <div className="flex flex-wrap gap-2">
+              {categories.map((category) => {
+                const Icon = category.icon;
+                return (
+                  <Button
+                    key={category.value}
+                    variant={selectedCategory === category.value ? "default" : "outline"}
+                    onClick={() => {
+                      setSelectedCategory(category.value);
+                    }}
+                    className="flex items-center gap-2 h-10"
+                    disabled={scraping}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {category.label}
+                  </Button>
+                );
+              })}
               </div>
-            </div>
+            
+            {/* Region Selector and Fetch Button */}
+            <div className="flex gap-3 items-center flex-wrap">
             <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-              <SelectTrigger className="w-[180px] h-11 border-border/50 hover:border-primary/50 transition-colors">
+                <SelectTrigger className="w-[180px] h-11 border-border/50 hover:border-primary/50 transition-colors">
                 <SelectValue placeholder="Select region" />
               </SelectTrigger>
               <SelectContent>
@@ -654,24 +766,17 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                 ))}
               </SelectContent>
             </Select>
-            <Button 
-              type="submit" 
-              disabled={scraping || !searchQuery.trim()} 
-              className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95 hover-glow disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Search className="w-4 h-4 mr-2" />
-              {scraping ? "Searching..." : "Search"}
-            </Button>
-            <Button 
-              onClick={handleScrape} 
-              disabled={scraping} 
-              variant="secondary" 
-              className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95 hover-glow disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+              <Button 
+                onClick={handleScrape} 
+                disabled={scraping} 
+                variant="secondary" 
+                className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95 hover-glow disabled:opacity-50 disabled:cursor-not-allowed"
+              >
               <RefreshCw className={`w-4 h-4 mr-2 ${scraping ? 'animate-spin' : ''}`} />
-              {scraping ? "Fetching..." : "Fetch Headlines"}
+              {scraping ? "Fetching Headlines..." : "Fetch Headlines"}
             </Button>
-          </form>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -679,7 +784,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       <main className="container mx-auto px-4 py-12">
         <div className="flex items-center justify-between mb-6 animate-fade-in">
           <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-            {searchQuery ? `Search Results for "${searchQuery}"` : "Latest Global News Headlines"}
+            {categories.find(c => c.value === selectedCategory)?.label || "Latest Global News Headlines"}
           </h2>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
