@@ -56,6 +56,258 @@ export type Database = {
         }
         Relationships: []
       }
+      articles_africa: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          scraped_at: string
+          snippet: string | null
+          source_country: string
+          source_name: string
+          source_region: string
+          title: string
+          url: string
+          category: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country: string
+          source_name: string
+          source_region?: string
+          title: string
+          url: string
+          category?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country?: string
+          source_name?: string
+          source_region?: string
+          title?: string
+          url?: string
+          category?: string
+        }
+        Relationships: []
+      }
+      articles_asia: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          scraped_at: string
+          snippet: string | null
+          source_country: string
+          source_name: string
+          source_region: string
+          title: string
+          url: string
+          category: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country: string
+          source_name: string
+          source_region?: string
+          title: string
+          url: string
+          category?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country?: string
+          source_name?: string
+          source_region?: string
+          title?: string
+          url?: string
+          category?: string
+        }
+        Relationships: []
+      }
+      articles_europe: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          scraped_at: string
+          snippet: string | null
+          source_country: string
+          source_name: string
+          source_region: string
+          title: string
+          url: string
+          category: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country: string
+          source_name: string
+          source_region?: string
+          title: string
+          url: string
+          category?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country?: string
+          source_name?: string
+          source_region?: string
+          title?: string
+          url?: string
+          category?: string
+        }
+        Relationships: []
+      }
+      articles_north_america: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          scraped_at: string
+          snippet: string | null
+          source_country: string
+          source_name: string
+          source_region: string
+          title: string
+          url: string
+          category: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country: string
+          source_name: string
+          source_region?: string
+          title: string
+          url: string
+          category?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country?: string
+          source_name?: string
+          source_region?: string
+          title?: string
+          url?: string
+          category?: string
+        }
+        Relationships: []
+      }
+      articles_oceania: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          scraped_at: string
+          snippet: string | null
+          source_country: string
+          source_name: string
+          source_region: string
+          title: string
+          url: string
+          category: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country: string
+          source_name: string
+          source_region?: string
+          title: string
+          url: string
+          category?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country?: string
+          source_name?: string
+          source_region?: string
+          title?: string
+          url?: string
+          category?: string
+        }
+        Relationships: []
+      }
+      articles_south_america: {
+        Row: {
+          created_at: string
+          id: string
+          published_at: string | null
+          scraped_at: string
+          snippet: string | null
+          source_country: string
+          source_name: string
+          source_region: string
+          title: string
+          url: string
+          category: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country: string
+          source_name: string
+          source_region?: string
+          title: string
+          url: string
+          category?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          scraped_at?: string
+          snippet?: string | null
+          source_country?: string
+          source_name?: string
+          source_region?: string
+          title?: string
+          url?: string
+          category?: string
+        }
+        Relationships: []
+      }
       favorites: {
         Row: {
           id: string

@@ -23,6 +23,19 @@ const regions = [
   { value: "South America", label: "South America" },
 ];
 
+// Helper function to get table name for a region
+function getTableNameForRegion(region: string): string | null {
+  const regionToTable: Record<string, string> = {
+    'Africa': 'articles_africa',
+    'Asia': 'articles_asia',
+    'Europe': 'articles_europe',
+    'North America': 'articles_north_america',
+    'Oceania': 'articles_oceania',
+    'South America': 'articles_south_america',
+  };
+  return regionToTable[region] || null;
+}
+
 const categories = [
   { value: "general", label: "General", icon: Globe },
   { value: "tech-ai", label: "Tech & AI", icon: Cpu },
@@ -379,85 +392,155 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     if (append) {
       setLoadingMore(true);
     } else {
-    setLoading(true);
+      setLoading(true);
       setCurrentPage(1);
     }
 
     try {
-      let query = supabase
-        .from("articles")
-        .select("*", { count: 'exact' })
-        .order("published_at", { ascending: false })
-        .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+      let newArticles: any[] = [];
+      let totalCount = 0;
 
-      if (selectedRegion !== "all") {
-        query = query.eq("source_region", selectedRegion);
-      }
+      if (selectedRegion === "all") {
+        // For "All Regions": Get top 10 from each region table, combine, sort, and paginate
+        const regionTables = [
+          'articles_africa',
+          'articles_asia',
+          'articles_europe',
+          'articles_north_america',
+          'articles_oceania',
+          'articles_south_america',
+        ];
 
-      // Filter by category
-      // For "general", show all articles (no category filter)
-      // For specific categories, filter by category
-      if (selectedCategory !== "general") {
-        query = query.eq("category", selectedCategory);
-      }
-
-      const { data, error, count } = await query;
-      
-      // Log for debugging
-      console.log(`📊 Database query: category="${selectedCategory}", region="${selectedRegion}", found ${count || 0} articles`);
-
-      if (error) {
-        console.error('❌ Database query error:', error);
-        const errorMessage = error?.message || String(error) || '';
-        
-        // If error is about missing column, show helpful message and fall back
-        if (errorMessage.includes('column') && errorMessage.includes('category')) {
-          console.warn("⚠️ Category column doesn't exist yet. Please run the database migration.");
-          console.warn("Falling back to fetching all articles without category filter...");
-          
-          // Fall back to fetching all articles without category filter
-          let fallbackQuery = supabase
-            .from("articles")
+        const regionPromises = regionTables.map(async (tableName) => {
+          // Use type assertion for dynamic table names
+          let query = (supabase.from(tableName as any) as any)
             .select("*", { count: 'exact' })
             .order("published_at", { ascending: false })
-            .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
-          
-          if (selectedRegion !== "all") {
-            fallbackQuery = fallbackQuery.eq("source_region", selectedRegion);
+            .limit(10); // Get top 10 from each region
+
+          // Filter by category if not general
+          if (selectedCategory !== "general") {
+            query = query.eq("category", selectedCategory);
           }
-          
-          const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
-          if (fallbackError) {
-            console.error('❌ Fallback query also failed:', fallbackError);
-            throw fallbackError;
+
+          const { data, error, count } = await query;
+          if (error) {
+            console.error(`❌ Error querying ${tableName}:`, error);
+            return { articles: [], count: 0 };
           }
-          
-          const newArticles = fallbackData || [];
-          setTotalArticles(fallbackCount || 0);
-          
-          if (append) {
-            setArticles(prev => [...prev, ...newArticles]);
-          } else {
-            setArticles(newArticles);
-          }
-          
-          setHasMore(newArticles.length === ARTICLES_PER_PAGE);
-          setCurrentPage(page);
-          
-          // Show warning toast
+          return { articles: data || [], count: count || 0 };
+        });
+
+        const regionResults = await Promise.all(regionPromises);
+        
+        // Combine all articles from all regions
+        const allRegionArticles = regionResults.flatMap(result => result.articles);
+        totalCount = regionResults.reduce((sum, result) => sum + result.count, 0);
+        
+        // Sort combined articles by published_at (newest first)
+        allRegionArticles.sort((a, b) => {
+          const dateA = new Date(a.published_at).getTime();
+          const dateB = new Date(b.published_at).getTime();
+          return dateB - dateA;
+        });
+        
+        // Apply pagination to combined results
+        const startIndex = (page - 1) * ARTICLES_PER_PAGE;
+        const endIndex = startIndex + ARTICLES_PER_PAGE;
+        newArticles = allRegionArticles.slice(startIndex, endIndex);
+        
+        console.log(`📊 All Regions query: category="${selectedCategory}", found ${totalCount} total articles across all regions, showing ${newArticles.length} on page ${page}`);
+      } else {
+        // For specific region: Query that region's table
+        const tableName = getTableNameForRegion(selectedRegion);
+        if (!tableName) {
+          console.error(`❌ No table found for region "${selectedRegion}"`);
           toast({
-            title: "Category filter unavailable",
-            description: "Please run the database migration to enable category filtering.",
+            title: "Error",
+            description: `Invalid region: ${selectedRegion}`,
             variant: "destructive",
           });
-          
-          return newArticles.length;
+          return 0;
         }
-        throw error;
+
+        // For all regions: Use standard query
+        let query = (supabase.from(tableName as any) as any)
+          .select("*", { count: 'exact' })
+          .order("published_at", { ascending: false })
+          .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+
+        // Filter by category if not general
+        if (selectedCategory !== "general") {
+          query = query.eq("category", selectedCategory);
+        }
+
+        const { data, error, count } = await query;
+        
+        // Log for debugging
+        console.log(`📊 Database query: table="${tableName}", category="${selectedCategory}", region="${selectedRegion}", found ${count || 0} articles`);
+        
+        // If no articles found, log sample data from table to debug
+        if ((count || 0) === 0 && !error) {
+          const sampleQuery = (supabase.from(tableName as any) as any)
+            .select("category, source_country, source_region, published_at")
+            .order("published_at", { ascending: false })
+            .limit(5);
+          const { data: sampleData } = await sampleQuery;
+          console.log(`🔍 Sample data from ${tableName}:`, sampleData);
+          console.log(`🔍 Looking for: category="${selectedCategory}"`);
+        }
+
+        if (error) {
+          console.error('❌ Database query error:', error);
+          const errorMessage = error?.message || String(error) || '';
+          
+          // If error is about missing column, show helpful message and fall back
+          if (errorMessage.includes('column') && errorMessage.includes('category')) {
+            console.warn("⚠️ Category column doesn't exist yet. Please run the database migration.");
+            console.warn("Falling back to fetching all articles without category filter...");
+            
+            // Fall back to fetching all articles without category filter
+            let fallbackQuery = (supabase.from(tableName as any) as any)
+              .select("*", { count: 'exact' })
+              .order("published_at", { ascending: false })
+              .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+            
+            const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
+            if (fallbackError) {
+              console.error('❌ Fallback query also failed:', fallbackError);
+              throw fallbackError;
+            }
+            
+            newArticles = fallbackData || [];
+            totalCount = fallbackCount || 0;
+            
+            // Show warning toast
+            toast({
+              title: "Category filter unavailable",
+              description: "Please run the database migration to enable category filtering.",
+              variant: "destructive",
+            });
+            
+            if (append) {
+              setArticles(prev => [...prev, ...newArticles]);
+            } else {
+              setArticles(newArticles);
+            }
+            
+            setHasMore(newArticles.length === ARTICLES_PER_PAGE);
+            setCurrentPage(page);
+            setTotalArticles(totalCount);
+            
+            return newArticles.length;
+          }
+          throw error;
+        }
+        
+        newArticles = data || [];
+        totalCount = count || 0;
       }
       
-      const newArticles = data || [];
-      setTotalArticles(count || 0);
+      setTotalArticles(totalCount);
       
       if (append) {
         setArticles(prev => [...prev, ...newArticles]);
@@ -470,7 +553,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       
       // Log for debugging
       if (selectedCategory !== "general" && newArticles.length === 0) {
-        console.log(`No articles found for category "${selectedCategory}" in region "${selectedRegion}". Total articles in DB: ${count || 0}`);
+        console.log(`No articles found for category "${selectedCategory}" in region "${selectedRegion}". Total articles in DB: ${totalCount}`);
       }
       
       return newArticles.length;
@@ -541,11 +624,21 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       console.log('📊 Response from edge function:', data);
       
       // Refresh articles after scraping to show new ones
-      // Wait a moment for database to update
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const displayedCount = await fetchArticles(1, false);
+      // Wait longer for database to update (especially for multiple region tables)
+      console.log('⏳ Waiting for database to update...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      console.log(`📈 Scraped ${data.articlesScraped} articles, displaying ${displayedCount} articles`);
+      // Try fetching articles, with retry if needed
+      let displayedCount = await fetchArticles(1, false);
+      console.log(`📈 First fetch: Scraped ${data.articlesScraped} articles, displaying ${displayedCount} articles`);
+      
+      // If no articles displayed but articles were scraped, try again after a longer delay
+      if (displayedCount === 0 && data.articlesScraped > 0) {
+        console.log('⚠️ No articles displayed on first fetch, retrying after delay...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        displayedCount = await fetchArticles(1, false);
+        console.log(`📈 Retry fetch: Displaying ${displayedCount} articles`);
+      }
       
       toast({
         title: data.articlesScraped > 0 ? "Headlines fetched successfully" : "No new articles found",
