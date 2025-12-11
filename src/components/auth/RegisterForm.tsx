@@ -24,6 +24,7 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const { toast } = useToast();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,12 +66,15 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
 
       if (error) throw error;
 
+      // Show success state on the page
+      setSuccess(true);
+      
       toast({
-        title: "Account created successfully!",
-        description: "Please check your email to verify your account.",
+        title: "Thank you for registering with us!",
+        description: "Please check your email and spam folder for the activation link.",
       });
 
-      onSuccess();
+      // Don't call onSuccess immediately - keep user on the page to see the message
     } catch (error: any) {
       console.error("Registration error:", error);
       setError(error.message || "Failed to create account. Please try again.");
@@ -89,12 +93,52 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleRegister} className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        {success ? (
+          <div className="space-y-4 text-center py-6">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+              <Mail className="w-8 h-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              Thank you for registering with us!
+            </h3>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                You should receive a confirmation email from{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  Supabase Auth {'<'}noreply@mail.app.supabase.io{'>'}
+                </span>
+              </p>
+              <p>
+                Please check your email inbox and spam folder and click on the activation link to begin using your account.
+              </p>
+            </div>
+            <div className="pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSuccess(false);
+                  setFormData({
+                    fullName: "",
+                    email: "",
+                    password: "",
+                    confirmPassword: "",
+                  });
+                  onSwitchToLogin();
+                }}
+                className="w-full"
+              >
+                Go to Sign In
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleRegister} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
           <div className="space-y-2">
             <Label htmlFor="fullName">Full Name</Label>
@@ -189,8 +233,10 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
             )}
           </Button>
         </form>
+        )}
 
-        <div className="mt-6 text-center">
+        {!success && (
+          <div className="mt-6 text-center">
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
             <button
@@ -202,6 +248,7 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
             </button>
           </p>
         </div>
+        )}
       </CardContent>
     </Card>
   );
