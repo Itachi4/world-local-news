@@ -23,6 +23,60 @@ const regions = [
   { value: "South America", label: "South America" },
 ];
 
+const countriesByRegion: Record<string, { code: string; name: string }[]> = {
+  Africa: [
+    { code: "ZA", name: "South Africa" },
+    { code: "NG", name: "Nigeria" },
+    { code: "EG", name: "Egypt" },
+    { code: "KE", name: "Kenya" },
+    { code: "GH", name: "Ghana" },
+    { code: "MA", name: "Morocco" },
+    { code: "ET", name: "Ethiopia" },
+    { code: "TZ", name: "Tanzania" },
+  ],
+  Asia: [
+    { code: "IN", name: "India" },
+    { code: "CN", name: "China" },
+    { code: "JP", name: "Japan" },
+    { code: "SG", name: "Singapore" },
+    { code: "SA", name: "Saudi Arabia" },
+    { code: "KR", name: "South Korea" },
+    { code: "PK", name: "Pakistan" },
+    { code: "AE", name: "United Arab Emirates" },
+  ],
+  Europe: [
+    { code: "GB", name: "United Kingdom" },
+    { code: "FR", name: "France" },
+    { code: "DE", name: "Germany" },
+    { code: "IT", name: "Italy" },
+    { code: "ES", name: "Spain" },
+    { code: "NL", name: "Netherlands" },
+    { code: "SE", name: "Sweden" },
+    { code: "PL", name: "Poland" },
+  ],
+  "North America": [
+    { code: "US", name: "United States" },
+    { code: "CA", name: "Canada" },
+    { code: "MX", name: "Mexico" },
+  ],
+  Oceania: [
+    { code: "AU", name: "Australia" },
+    { code: "NZ", name: "New Zealand" },
+    { code: "FJ", name: "Fiji" },
+    { code: "PG", name: "Papua New Guinea" },
+  ],
+  "South America": [
+    { code: "BR", name: "Brazil" },
+    { code: "AR", name: "Argentina" },
+    { code: "CO", name: "Colombia" },
+    { code: "CL", name: "Chile" },
+    { code: "PE", name: "Peru" },
+    { code: "VE", name: "Venezuela" },
+    { code: "EC", name: "Ecuador" },
+    { code: "UY", name: "Uruguay" },
+  ],
+};
+
 // Helper function to get table name for a region
 function getTableNameForRegion(region: string): string | null {
   const regionToTable: Record<string, string> = {
@@ -58,6 +112,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>("general");
   const [selectedRegion, setSelectedRegion] = useState("all");
+  const [selectedCountry, setSelectedCountry] = useState("all");
   const [scraping, setScraping] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -388,7 +443,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   };
 
-  const fetchArticles = async (page = 1, append = false): Promise<number> => {
+  const fetchArticles = async (page = 1, append = false, countryOverride?: string): Promise<number> => {
+    const countryFilter = countryOverride !== undefined ? countryOverride : selectedCountry;
     if (append) {
       setLoadingMore(true);
     } else {
@@ -421,6 +477,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           // Filter by category if not general
           if (selectedCategory !== "general") {
             query = query.eq("category", selectedCategory);
+          }
+
+          // Filter by country if selected (only applies within a specific region)
+          if (countryFilter !== "all") {
+            query = query.eq("source_country", countryFilter);
           }
 
           const { data, error, count } = await query;
@@ -463,7 +524,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           return 0;
         }
 
-        // For all regions: Use standard query
+        // For specific region: Use standard query
         let query = (supabase.from(tableName as any) as any)
           .select("*", { count: 'exact' })
           .order("published_at", { ascending: false })
@@ -472,6 +533,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         // Filter by category if not general
         if (selectedCategory !== "general") {
           query = query.eq("category", selectedCategory);
+        }
+
+        // Filter by country if selected
+        if (countryFilter !== "all") {
+          query = query.eq("source_country", countryFilter);
         }
 
         const { data, error, count } = await query;
@@ -591,12 +657,13 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       
       // Create the function call promise with category
       const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-      console.log('Frontend sending:', { selectedCategory, categoryValue, region: selectedRegion });
+      console.log('Frontend sending:', { selectedCategory, categoryValue, region: selectedRegion, country: selectedCountry });
       
         // Initial fetch: get more articles to ensure good coverage from all countries
         const requestBody = { 
           category: categoryValue, 
           region: selectedRegion === "all" ? null : selectedRegion,
+          country: selectedCountry === "all" ? null : selectedCountry,
           limit: 100  // Fetch 100 articles to get good coverage from all countries
         };
       
@@ -681,6 +748,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           body: { 
             category: categoryValue, 
             region: selectedRegion === "all" ? null : selectedRegion,
+            country: selectedCountry === "all" ? null : selectedCountry,
             limit: 100  // Fetch more articles to get good coverage
           }
         });
@@ -714,21 +782,26 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     ? articles.filter(article => favorites.has(article.id))
     : articles;
 
-  // Auto-fetch articles when category or region changes
+  // Reset country when region changes
+  useEffect(() => {
+    setSelectedCountry("all");
+  }, [selectedRegion]);
+
+  // Auto-fetch articles when category, region, or country changes
   useEffect(() => {
     const autoFetch = async () => {
       // First, fetch existing articles from database
-      const count = await fetchArticles(1, false);
+      const count = await fetchArticles(1, false, selectedCountry);
       
-      // Always auto-fetch new headlines when category or region changes
-      // This ensures fresh content is available
-      console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", found ${count} existing articles`);
+      // Always auto-fetch new headlines when filters change
+      console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", Country="${selectedCountry}", found ${count} existing articles`);
       
-      // Call handleScrape in background (don't await to avoid blocking UI)
+      // Call scrape in background (don't await to avoid blocking UI)
       const categoryValue = selectedCategory === "general" ? null : selectedCategory;
       const requestBody = { 
         category: categoryValue, 
         region: selectedRegion === "all" ? null : selectedRegion,
+        country: selectedCountry === "all" ? null : selectedCountry,
         limit: 100
       };
       
@@ -742,7 +815,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           
           // Wait a moment for database to update, then refresh articles
           await new Promise(resolve => setTimeout(resolve, 500));
-          await fetchArticles(1, false);
+          await fetchArticles(1, false, selectedCountry);
         })
         .catch(err => {
           console.error('Auto-fetch error:', err);
@@ -751,7 +824,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     
     autoFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, selectedRegion]);
+  }, [selectedCategory, selectedRegion, selectedCountry]);
 
   useEffect(() => {
     if (user) {
@@ -859,6 +932,23 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Country selector — visible only when a specific region is selected */}
+            {selectedRegion !== "all" && countriesByRegion[selectedRegion] && (
+              <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                <SelectTrigger className="w-[200px] h-11 border-border/50 hover:border-primary/50 transition-colors">
+                  <SelectValue placeholder="All Countries" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Countries</SelectItem>
+                  {countriesByRegion[selectedRegion].map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
               <Button 
                 onClick={handleScrape} 
                 disabled={scraping} 

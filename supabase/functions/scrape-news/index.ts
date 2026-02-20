@@ -34,15 +34,8 @@ function getLocaleForCountry(countryCode: string): string {
     'NL': 'nl-NL', // Netherlands
     'SE': 'sv-SE', // Sweden
     'PL': 'pl-PL', // Poland
-    // South America
-    'BR': 'pt-BR', // Brazil
-    'AR': 'es-AR', // Argentina
-    'CO': 'es-CO', // Colombia
-    'CL': 'es-CL', // Chile
-    'PE': 'es-PE', // Peru
-    'VE': 'es-VE', // Venezuela
-    'EC': 'es-EC', // Ecuador
-    'UY': 'es-UY', // Uruguay
+    // South America — intentionally using 'en' (via fallback) to get English articles
+    // Removed Spanish/Portuguese locales: Google News returns English results when hl=en
     // Africa
     'ZA': 'en-ZA', // South Africa
     'NG': 'en-NG', // Nigeria
@@ -58,7 +51,7 @@ function getLocaleForCountry(countryCode: string): string {
     'FJ': 'en-FJ', // Fiji
     'PG': 'en-PG', // Papua New Guinea
   };
-  
+
   return localeMap[countryCode] || 'en'; // Default to 'en' if country not in map
 }
 
@@ -66,12 +59,12 @@ function getLocaleForCountry(countryCode: string): string {
 function buildGoogleNewsQuery(categoryQuery: string, countryName: string): string {
   // 1. Get the base query (e.g., "politics OR government")
   const baseQuery = categoryQuery.replace(/\s+/g, '+');
-  
+
   // 2. Force the country name into the query with AND logic
   // Result: "(politics+OR+government)+AND+Pakistan"
   const countryNameEncoded = countryName.replace(/\s+/g, '+');
   const strictQuery = `(${baseQuery})+AND+${countryNameEncoded}`;
-  
+
   return strictQuery;
 }
 
@@ -171,13 +164,13 @@ function extractDomainFromUrl(url: string): string {
     // For Google News URLs, we can't extract the real domain easily
     const urlObj = new URL(url);
     let hostname = urlObj.hostname.toLowerCase().replace('www.', '');
-    
+
     // If it's a Google News URL, we can't extract the real domain easily
     // The source_name from RSS is more reliable
     if (hostname.includes('news.google.com')) {
       return ''; // Can't extract from Google News redirect
     }
-    
+
     return hostname;
   } catch (e) {
     return '';
@@ -187,7 +180,7 @@ function extractDomainFromUrl(url: string): string {
 function getSourcePriority(sourceName: string, region: string, url?: string): number {
   if (region === 'Asia') {
     const sourceLower = sourceName.toLowerCase().trim();
-    
+
     // First check source name - try both exact and partial matches
     for (const [source, priority] of Object.entries(asiaPrioritySources)) {
       const sourceKey = source.toLowerCase();
@@ -197,7 +190,7 @@ function getSourcePriority(sourceName: string, region: string, url?: string): nu
         return priority;
       }
     }
-    
+
     // Also check for common variations and abbreviations
     // Times of India variations
     if (sourceLower.includes('toi') || sourceLower.includes('timesofindia') || sourceLower.includes('times of india')) {
@@ -219,7 +212,7 @@ function getSourcePriority(sourceName: string, region: string, url?: string): nu
       console.log(`   ✅ Priority match (variation): "${sourceName}" -> Indian Express (priority: 80)`);
       return 80;
     }
-    
+
     // Then check URL domain if available (for non-Google News URLs)
     if (url) {
       const domain = extractDomainFromUrl(url);
@@ -235,6 +228,19 @@ function getSourcePriority(sourceName: string, region: string, url?: string): nu
     }
   }
   return 0; // Default priority for non-priority sources
+}
+
+// South American country codes — we use gl=US for these to get English-language results
+// (their native Google News editions serve Spanish/Portuguese content)
+const southAmericanCountries = new Set(['BR', 'AR', 'CO', 'CL', 'PE', 'VE', 'EC', 'UY']);
+
+// Helper: get the gl/ceid country code to use for Google News RSS
+// South American countries use US edition so results are in English
+function getGoogleNewsGl(countryCode: string): { gl: string; ceid: string } {
+  if (southAmericanCountries.has(countryCode)) {
+    return { gl: 'US', ceid: 'US:en' };
+  }
+  return { gl: countryCode, ceid: `${countryCode}:en` };
 }
 
 // Country code to region mapping
@@ -289,12 +295,12 @@ function getRegionFromCountry(countryCode: string): string {
 
 function detectArticleCountry(title: string, snippet: string, url: string, sourceName: string, defaultCountry: string): string {
   const text = `${title} ${snippet} ${sourceName}`.toLowerCase();
-  
+
   // Check URL TLD (but be careful with ambiguous TLDs like .co)
   try {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.toLowerCase();
-    
+
     // Special handling for .co - only match if it's clearly Colombia (.co at the end, not .co.XX)
     // Many international sites use .co (like google.co.in, which is India, not Colombia)
     if (hostname.endsWith('.co') && !hostname.match(/\.co\.[a-z]{2,}$/)) {
@@ -305,7 +311,7 @@ function detectArticleCountry(title: string, snippet: string, url: string, sourc
       }
       // Otherwise, .co is ambiguous - don't use it, continue to other detection methods
     }
-    
+
     // Check other TLDs
     for (const [tld, country] of Object.entries(tldToCountry)) {
       // Match if hostname ends with the TLD (exact match or as part of a longer TLD)
@@ -317,7 +323,7 @@ function detectArticleCountry(title: string, snippet: string, url: string, sourc
   } catch (e) {
     // URL parsing failed, continue with other methods
   }
-  
+
   // Check for country keywords in title/snippet
   for (const [countryCode, keywords] of Object.entries(countryKeywords)) {
     for (const keyword of keywords) {
@@ -327,7 +333,7 @@ function detectArticleCountry(title: string, snippet: string, url: string, sourc
       }
     }
   }
-  
+
   // Default to the RSS feed's country if we can't detect
   console.log(`   Using default country from RSS feed: ${defaultCountry}`);
   return defaultCountry;
@@ -409,7 +415,7 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
   // For faster initial results, fetch from first 3 countries per region
   // For full fetch, get all countries
   const countriesToFetch = limitCountries ? region.countries.slice(0, 3) : region.countries;
-  
+
   const countryPromises = countriesToFetch.map(async (country) => {
     try {
       const categoryLabel = category ? ` [${category}]` : '';
@@ -417,7 +423,7 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
 
       // Special handling for Pakistan and India: Use direct RSS feeds
       const urls: string[] = [];
-      
+
       if (country.code === 'PK') {
         // Pakistan: Use Dawn.com RSS feeds directly
         if (!category || category === 'general') {
@@ -437,7 +443,7 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
           urls.push('https://www.dawn.com/feeds/business');
           console.log(`🔗 Dawn.com RSS URL [Business]: https://www.dawn.com/feeds/business`);
         }
-        
+
         // For other categories, still use Google News as fallback
         if (category && category !== 'general' && category !== 'tech-ai' && category !== 'sports-games' && category !== 'business-finance') {
           const categoryQuery = categoryQueries[category];
@@ -465,7 +471,7 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
           urls.push('https://timesofindia.indiatimes.com/rssfeedsvideo/3813456.cms');
           console.log(`🔗 Times of India RSS URL [Sports]: https://timesofindia.indiatimes.com/rssfeedsvideo/3813456.cms`);
         }
-        
+
         // For other categories, still use Google News as fallback
         if (category && category !== 'general' && category !== 'arts-entertainment-fashion' && category !== 'business-finance' && category !== 'sports-games') {
           const categoryQuery = categoryQueries[category];
@@ -476,63 +482,64 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
         }
       } else {
         // Other countries: Use Google News RSS
+        // South American countries use gl=US so results are in English
+        const { gl, ceid } = getGoogleNewsGl(country.code);
+        const locale = getLocaleForCountry(country.code); // 'en' for SA, native for others
         if (category && categoryQueries[category]) {
-          // Category-specific search: /search?q=(CATEGORY_QUERY)+AND+COUNTRY&gl=COUNTRY&hl=LOCALE&ceid=COUNTRY:en
+          // Category-specific search
           const categoryQuery = categoryQueries[category];
           const queryString = buildGoogleNewsQuery(categoryQuery, country.name);
-          const locale = getLocaleForCountry(country.code);
-          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${queryString}&gl=${country.code}&hl=${locale}&ceid=${country.code}:en`);
+          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${queryString}&gl=${gl}&hl=${locale}&ceid=${ceid}`);
           console.log(`🔗 RSS URL [${category}]: ${urls[0]}`);
-      } else {
-          // General news: /search?q=(general)+AND+COUNTRY&gl=COUNTRY&hl=LOCALE&ceid=COUNTRY:en
+        } else {
+          // General news
           const generalQuery = buildGoogleNewsQuery('general', country.name);
-          const locale = getLocaleForCountry(country.code);
-          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${generalQuery}&gl=${country.code}&hl=${locale}&ceid=${country.code}:en`);
+          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${generalQuery}&gl=${gl}&hl=${locale}&ceid=${ceid}`);
           console.log(`🔗 RSS URL [General]: ${urls[0]}`);
         }
-        console.log(`   Country: ${country.name} (${country.code}), Region: ${region.region}`);
+        console.log(`   Country: ${country.name} (${country.code}), Region: ${region.region}, gl: ${gl}`);
       }
 
       // Fetch from all URLs and combine results
       const allArticles: any[] = [];
-      
+
       for (const url of urls) {
         try {
-      const response = await fetchWithRetry(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
-          'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
-          'Cache-Control': 'no-cache'
-        }
-      }, 2)
+          const response = await fetchWithRetry(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+              'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
+              'Cache-Control': 'no-cache'
+            }
+          }, 2)
 
-      if (!response.ok) {
+          if (!response.ok) {
             console.error(`Failed to fetch news from ${url}: ${response.status}`)
             continue
-      }
+          }
 
-      const xmlText = await response.text()
+          const xmlText = await response.text()
           console.log(`📥 RSS feed response length: ${xmlText.length} characters`);
           console.log(`📥 First 500 chars of RSS: ${xmlText.substring(0, 500)}`);
-          
+
           const parsedArticles = await parseRSSFeed(xmlText, country.name, country.code, region.region, category, maxArticles)
           console.log(`✅ Fetched ${parsedArticles.length} articles from ${url}`);
-          
+
           allArticles.push(...parsedArticles);
         } catch (error) {
           console.error(`Error fetching from ${url}:`, error);
           // Continue to next URL
         }
       }
-      
+
       console.log(`✅ Total fetched ${allArticles.length} articles from ${country.name} (${country.code})`);
-      
+
       // Log country codes of parsed articles to verify they're correct
       if (allArticles.length > 0) {
         const countryCodes = allArticles.map(a => a.source_country);
         console.log(`   Country codes in articles: ${[...new Set(countryCodes)].join(', ')}`);
       }
-      
+
       return allArticles;
     } catch (error) {
       console.error(`Error fetching news from ${country.name}:`, error)
@@ -542,7 +549,7 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
 
   // Run all country fetches in parallel to speed up scraping
   const results = await Promise.allSettled(countryPromises)
-  
+
   // Log results for each country
   results.forEach((result, index) => {
     const country = countriesToFetch[index];
@@ -553,7 +560,7 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
       console.error(`❌ ${country.name}: Failed to fetch - ${result.reason}`);
     }
   });
-  
+
   const articles = results.flatMap((res) => (res.status === 'fulfilled' ? res.value : []))
   console.log(`📊 Total articles from ${region.region}: ${articles.length} from ${results.filter(r => r.status === 'fulfilled').length}/${countriesToFetch.length} countries`);
   return articles
@@ -580,7 +587,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
   const isDawnFeed = channelTitle.toLowerCase().includes('dawn') || xml.includes('dawn.com');
   const isTOIFeed = channelTitle.toLowerCase().includes('times of india') || xml.includes('timesofindia.indiatimes.com');
   const defaultSourceName = isDawnFeed ? 'Dawn' : (isTOIFeed ? 'Times of India' : `News from ${countryName}`);
-  
+
   const feedType = isDawnFeed ? 'Dawn.com' : (isTOIFeed ? 'Times of India' : 'Google News/Other');
   console.log(`📰 RSS Feed type: ${feedType}, Channel: "${channelTitle}"`);
   if (isDawnFeed) {
@@ -591,7 +598,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
   const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
   const itemArray = Array.from(itemMatches);
   console.log(`Found ${itemArray.length} RSS items in feed`);
-  
+
   if (itemArray.length === 0) {
     console.warn(`⚠️ No <item> tags found in RSS feed. XML preview: ${xml.substring(0, 500)}...`);
     return articles;
@@ -606,14 +613,14 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     const pubDateMatch = itemXml.match(/<pubDate>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/pubDate>/);
     const rawPubDate = pubDateMatch ? (pubDateMatch[1] ?? pubDateMatch[2]) : null;
     const publishedAt = rawPubDate ? new Date(decode(rawPubDate)) : new Date(0); // Use epoch if no date
-    
+
     if (!isNaN(publishedAt.getTime())) {
       itemsWithDates.push({ itemXml, publishedAt });
     } else if (rawPubDate) {
       console.log(`⚠️ Could not parse date: "${rawPubDate}"`);
     }
   }
-  
+
   // Sort by date descending (newest first)
   itemsWithDates.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
   console.log(`Sorted ${itemsWithDates.length} items by date (newest first)`);
@@ -634,7 +641,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       continue;
     }
     console.log(`📰 Processing article: "${title.substring(0, 50)}..."`);
-    
+
     if (isDawnFeed && articles.length < 5) {
       console.log(`   📅 Published: ${itemPublishedAt.toISOString()}`);
     }
@@ -647,15 +654,15 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       console.log('⚠️ Skipping item: No link found');
       continue;
     }
-    
+
     const rawLink = linkMatch[1] ?? linkMatch[2];
     let url = decode(rawLink).trim();
-    
+
     if (!url || url.length === 0) {
       console.log('⚠️ Skipping item: Empty link after decoding');
       continue;
     }
-    
+
     // Check feed type for logging
     if (url.includes('dawn.com')) {
       console.log(`🔗 Using Dawn.com direct URL: ${url.substring(0, 100)}...`);
@@ -681,32 +688,32 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     } else if (isTOIFeed) {
       sourceName = 'Times of India';
     } else {
-    const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
+      const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
       sourceName = decode(sourceMatch ? sourceMatch[1] : defaultSourceName);
     }
 
     // Use the date we already extracted during sorting
     const publishedAt = itemPublishedAt;
     const publishedTime = publishedAt.getTime();
-    
+
     // Filter out stale items (older than ~3 days to prioritize recent news)
     // For Dawn.com and Times of India, use a longer window (7 days) since they're trusted sources
     const daysAgo = isDawnFeed || isTOIFeed ? 7 : 3;
     const cutoffTime = Date.now() - 1000 * 60 * 60 * 24 * daysAgo;
-    
+
     if (isNaN(publishedTime)) {
       console.log(`⚠️ Skipping article: Invalid publish date`);
       console.log(`   Title: "${title.substring(0, 60)}..."`);
       continue;
     }
-    
+
     if (publishedTime < cutoffTime) {
       const daysOld = Math.floor((Date.now() - publishedTime) / (1000 * 60 * 60 * 24));
       console.log(`⚠️ Skipping article: Too old (published: ${publishedAt.toISOString()}, ${daysOld} days ago, cutoff: ${daysAgo} days)`);
       console.log(`   Title: "${title.substring(0, 60)}..."`);
       continue;
     }
-    
+
     console.log(`✅ Article date OK: ${publishedAt.toISOString()} (${Math.floor((Date.now() - publishedTime) / (1000 * 60 * 60 * 24))} days old)`);
 
     // Try to detect the actual country/region from the article
@@ -714,7 +721,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     // For Dawn.com and Times of India feeds, trust the RSS feed country code
     const detectedCountry = detectArticleCountry(title, snippet, url, sourceName, countryCode);
     const detectedRegion = getRegionFromCountry(detectedCountry);
-    
+
     // Filter logic: Only skip articles that are CLEARLY from a different region
     // Keep articles if:
     // 1. Detected country matches RSS feed country (default case - most articles)
@@ -725,42 +732,42 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     // - Detected region is known and doesn't match expected region AND detected country doesn't match RSS feed country
     // - For Google News feeds, be more strict: if detected country is clearly different (not just mentioned), skip it
     const isTrustedSource = isDawnFeed || isTOIFeed;
-    
+
     // For Google News feeds, check if the detected country is clearly from a different region
     // and the article doesn't seem to be about the RSS feed's country
     let shouldSkip = false;
     if (!isTrustedSource) {
       // If detected country is from a different region and doesn't match RSS feed country
-      if (detectedRegion !== 'Unknown' && 
-          detectedRegion !== region && 
-          detectedCountry !== countryCode) {
+      if (detectedRegion !== 'Unknown' &&
+        detectedRegion !== region &&
+        detectedCountry !== countryCode) {
         // Additional check: if the article title/snippet doesn't contain the RSS feed country name,
         // it's likely not relevant to that country
         const countryNameLower = countryName.toLowerCase();
         const articleText = `${title} ${snippet}`.toLowerCase();
         const mentionsCountry = articleText.includes(countryNameLower);
-        
+
         if (!mentionsCountry) {
           shouldSkip = true;
         }
       }
     }
-    
+
     if (shouldSkip) {
       console.log(`⚠️ Skipping article: Detected country "${detectedCountry}" (region: "${detectedRegion}") doesn't match expected region "${region}" and doesn't mention "${countryName}"`);
       console.log(`   Article: "${title.substring(0, 60)}..."`);
       continue;
     }
-    
+
     const articleCategory = category || 'general';
     console.log(`✅ Keeping article: Detected country "${detectedCountry}", region "${detectedRegion}", expected region "${region}"`);
-    
+
     // For trusted sources (Dawn.com, Times of India), always use RSS feed country code
     // For Google News feeds, only use detected country if it matches the RSS feed country or region
     // Otherwise, use RSS feed country code to avoid misclassification
     let finalCountry: string;
     let finalRegion: string;
-    
+
     if (isTrustedSource) {
       // Trusted sources: always use RSS feed country
       finalCountry = countryCode;
@@ -777,7 +784,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
         finalRegion = region;
       }
     }
-    
+
     console.log(`   📍 Final country: "${finalCountry}", Final region: "${finalRegion}" (trusted source: ${isTrustedSource})`);
 
     const article = {
@@ -790,14 +797,14 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       published_at: publishedAt.toISOString(),
       category: articleCategory,
     };
-    
+
     articles.push(article);
-    
+
     if (isDawnFeed) {
       console.log(`   ✅ Dawn.com article ${articles.length}: "${title.substring(0, 60)}..."`);
       console.log(`      Category: "${articleCategory}", Country: "${finalCountry}", Region: "${finalRegion}", Date: ${publishedAt.toISOString()}`);
     }
-    
+
     if (isTOIFeed && articles.length <= 3) {
       console.log(`   ✅ Times of India article ${articles.length}: "${title.substring(0, 60)}..."`);
       console.log(`      Category: "${articleCategory}", Country: "${finalCountry}", Region: "${finalRegion}"`);
@@ -814,7 +821,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       console.log(`   First item preview: ${itemArray[0]?.[1]?.substring(0, 300)}...`);
     }
   }
-  
+
   console.log(`✅ Parsed ${articles.length} total articles from ${countryName} RSS feed`);
   return articles;
 }
@@ -841,21 +848,21 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
+
     if (!supabaseUrl || !supabaseKey) {
       console.error('Missing Supabase environment variables');
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Missing Supabase configuration. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.' 
+        JSON.stringify({
+          success: false,
+          error: 'Missing Supabase configuration. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
+          status: 500
         }
       );
     }
-    
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get request body for category, region, and limit
@@ -866,29 +873,29 @@ Deno.serve(async (req) => {
       console.log('No JSON body provided, using defaults');
       requestBody = {};
     }
-    
+
     // Debug: Log raw request body
     console.log('📥 Raw request body:', JSON.stringify(requestBody));
-    
-    const { category, region, limit } = requestBody || { category: null, region: null, limit: 12 };
+
+    const { category, region, country, limit } = requestBody || { category: null, region: null, country: null, limit: 12 };
 
     console.log('Starting news scraping from Google News RSS feeds...');
-    console.log(`📊 Parsed parameters: category="${category}", region="${region}", limit=${limit}`);
+    console.log(`📊 Parsed parameters: category="${category}", region="${region}", country="${country}", limit=${limit}`);
     console.log(`📊 Region type: ${typeof region}, value: ${JSON.stringify(region)}`);
-    
+
     if (category) {
       console.log(`Category: "${category}"`);
     }
     if (region) {
       console.log(`Region: "${region}"`);
     }
-    
+
     // Debug: Log all available regions
     console.log(`Available regions in config: ${regionConfigs.map(r => `"${r.region}"`).join(', ')}`);
-    
+
     // Fetch news from specified region or all regions
     const allArticles: any[] = [];
-    
+
     // Limit regions when "all" is selected to prevent timeout
     let regionsToSearch: RegionConfig[] = [];
     if (region && typeof region === 'string' && region.trim().length > 0) {
@@ -901,14 +908,14 @@ Deno.serve(async (req) => {
         console.error(`❌ No matching region found for "${region}". Available regions: ${regionConfigs.map(r => r.region).join(', ')}`);
         // Return error response if region not found
         return new Response(
-          JSON.stringify({ 
-            success: false, 
+          JSON.stringify({
+            success: false,
             error: `Region "${region}" not found. Available regions: ${regionConfigs.map(r => r.region).join(', ')}`,
             articlesScraped: 0
           }),
-          { 
+          {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400 
+            status: 400
           }
         );
       }
@@ -917,17 +924,40 @@ Deno.serve(async (req) => {
       regionsToSearch = regionConfigs.slice(0, 3);
       console.log(`No specific region requested (region="${region}"), using first 3 regions (to prevent timeout)`);
     }
-    
+
+    // If a specific country is requested, restrict each region's country list to that country only
+    if (country && typeof country === 'string' && country.trim().length > 0) {
+      const normalizedCountry = country.trim().toUpperCase();
+      console.log(`Filtering countries to: "${normalizedCountry}"`);
+      regionsToSearch = regionsToSearch.map(r => ({
+        ...r,
+        countries: r.countries.filter(c => c.code.toUpperCase() === normalizedCountry),
+      })).filter(r => r.countries.length > 0);
+
+      if (regionsToSearch.length === 0) {
+        console.error(`❌ Country "${country}" not found in any of the selected regions`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Country "${country}" not found. Check that it belongs to the selected region.`,
+            articlesScraped: 0
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      console.log(`After country filter: ${regionsToSearch.length} region(s), ${regionsToSearch.reduce((s, r) => s + r.countries.length, 0)} country/countries`);
+    }
+
     console.log(`Searching ${regionsToSearch.length} region(s): ${regionsToSearch.map(r => r.region).join(', ')}`);
-    
+
     // Strategy: Fetch ALL articles from RSS feeds, then save in batches
     // First batch (30 articles) for immediate display, then continue with the rest
     const initialBatchSize = 30; // Quick first batch for users to see
     const targetLimit = limit || 200; // Fetch more articles total
-    
+
     console.log(`Fetching ALL articles from RSS feeds (no per-country limit), then saving in batches...`);
     console.log(`Initial batch: ${initialBatchSize} articles, then continue fetching up to ${targetLimit} total`);
-    
+
     // Fetch from all countries in the region - parse ALL articles from RSS feeds
     for (const regionConfig of regionsToSearch) {
       // Fetch ALL articles from each country (no maxArticles limit)
@@ -945,19 +975,19 @@ Deno.serve(async (req) => {
       seenUrls.add(article.url);
       return true;
     });
-    
+
     console.log(`📊 Total unique articles fetched: ${uniqueArticles.length} (removed ${allArticles.length - uniqueArticles.length} duplicates)`);
-    
+
     // Sort articles: Priority sources first, then by date (newest first)
     // For Asia region, prioritize trusted sources like Times of India, Hindustan Times, etc.
     const currentRegion = region || 'all';
-    
+
     // Add priority scores to articles for sorting
     const articlesWithPriority = uniqueArticles.map(article => ({
       ...article,
       _priority: getSourcePriority(article.source_name, article.source_region, article.url)
     }));
-    
+
     // Log some sample source names for debugging
     if (currentRegion === 'Asia' && articlesWithPriority.length > 0) {
       console.log(`📊 Sample source names from RSS feeds (first 20):`);
@@ -967,7 +997,7 @@ Deno.serve(async (req) => {
         const domain = extractDomainFromUrl(url);
         console.log(`   "${name}" (${domain}) -> priority: ${priority}`);
       });
-      
+
       // Show all unique sources with their priorities
       const allUniqueSources = new Map<string, { name: string; url: string; priority: number }>();
       articlesWithPriority.forEach(a => {
@@ -980,7 +1010,7 @@ Deno.serve(async (req) => {
           });
         }
       });
-      
+
       console.log(`📊 All unique sources (${allUniqueSources.size} total):`);
       Array.from(allUniqueSources.values())
         .sort((a, b) => b.priority - a.priority)
@@ -990,23 +1020,23 @@ Deno.serve(async (req) => {
           console.log(`   [Priority ${priority}] "${name}" (${domain})`);
         });
     }
-    
+
     // Sort by priority first, then by date
     articlesWithPriority.sort((a, b) => {
       // First sort by priority (higher priority first)
       if (a._priority !== b._priority) {
         return b._priority - a._priority;
       }
-      
+
       // If same priority, sort by date (newest first)
       const dateA = new Date(a.published_at).getTime();
       const dateB = new Date(b.published_at).getTime();
       return dateB - dateA;
     });
-    
+
     // Remove the temporary _priority field
     const sortedArticles = articlesWithPriority.map(({ _priority, ...article }) => article);
-    
+
     console.log(`📊 Sorted articles: Priority sources first, then by date`);
     if (currentRegion === 'Asia' && sortedArticles.length > 0) {
       const priorityCount = sortedArticles.filter(a => getSourcePriority(a.source_name, a.source_region, a.url) > 0).length;
@@ -1021,12 +1051,12 @@ Deno.serve(async (req) => {
         });
       }
     }
-    
+
     // Use sorted articles
     const articlesToSave = sortedArticles.slice(0, targetLimit);
-    
+
     console.log(`📊 Saving ${articlesToSave.length} articles (limited from ${sortedArticles.length})`);
-    
+
     // Log article breakdown by country
     if (articlesToSave.length > 0) {
       const countryBreakdown: Record<string, number> = {};
@@ -1034,7 +1064,7 @@ Deno.serve(async (req) => {
         const country = article.source_country || 'unknown';
         countryBreakdown[country] = (countryBreakdown[country] || 0) + 1;
       });
-      
+
       console.log('📊 Articles by country:', countryBreakdown);
       console.log('Sample articles:', articlesToSave.slice(0, 5).map(a => ({
         title: a.title?.substring(0, 50),
@@ -1049,7 +1079,7 @@ Deno.serve(async (req) => {
     // Save articles in batches: first batch immediately, then the rest
     // Group articles by region to save to appropriate tables
     let totalInserted = 0;
-    
+
     if (articlesToSave.length > 0) {
       // Group articles by region
       const articlesByRegion = new Map<string, any[]>();
@@ -1060,9 +1090,9 @@ Deno.serve(async (req) => {
         }
         articlesByRegion.get(region)!.push(article);
       });
-      
+
       console.log(`💾 Grouped articles by region: ${Array.from(articlesByRegion.keys()).join(', ')}`);
-      
+
       // Save articles to their respective region tables
       for (const [region, regionArticles] of articlesByRegion.entries()) {
         const tableName = getTableNameForRegion(region);
@@ -1070,13 +1100,13 @@ Deno.serve(async (req) => {
           console.warn(`⚠️ No table found for region "${region}", skipping ${regionArticles.length} articles`);
           continue;
         }
-        
+
         console.log(`💾 Saving ${regionArticles.length} articles to ${tableName}...`);
-        
+
         // Phase 1: Save initial batch quickly (for immediate user display)
         const initialBatch = regionArticles.slice(0, Math.min(initialBatchSize, regionArticles.length));
         console.log(`💾 Phase 1: Saving initial batch of ${initialBatch.length} articles to ${tableName}...`);
-        
+
         const initialResult = await (supabase.from(tableName as any) as any)
           .upsert(initialBatch, { onConflict: 'url', ignoreDuplicates: true });
 
@@ -1086,14 +1116,14 @@ Deno.serve(async (req) => {
           totalInserted += initialBatch.length;
           console.log(`✅ Phase 1: Successfully inserted ${initialBatch.length} articles to ${tableName}`);
         }
-        
+
         // Phase 2: Save remaining articles in batches
         if (regionArticles.length > initialBatch.length) {
           const remainingArticles = regionArticles.slice(initialBatch.length);
           const batchSize = 50; // Save in batches of 50
-          
+
           console.log(`💾 Phase 2: Saving remaining ${remainingArticles.length} articles to ${tableName} in batches of ${batchSize}...`);
-          
+
           for (let i = 0; i < remainingArticles.length; i += batchSize) {
             const batch = remainingArticles.slice(i, i + batchSize);
             const batchResult = await (supabase.from(tableName as any) as any)
@@ -1105,7 +1135,7 @@ Deno.serve(async (req) => {
               totalInserted += batch.length;
               console.log(`✅ Phase 2: Batch ${Math.floor(i / batchSize) + 1} - Inserted ${batch.length} articles to ${tableName} (total: ${totalInserted})`);
             }
-            
+
             // Small delay between batches to avoid overwhelming the database
             if (i + batchSize < remainingArticles.length) {
               await new Promise(resolve => setTimeout(resolve, 100));
@@ -1113,22 +1143,22 @@ Deno.serve(async (req) => {
           }
         }
       }
-      
+
       console.log(`✅ Successfully inserted ${totalInserted} total articles into region-specific tables`);
     } else {
       console.warn('⚠️ No articles to insert - function completed but found 0 articles');
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         articlesScraped: totalInserted || articlesToSave.length || 0,
         totalFetched: uniqueArticles.length,
         message: `News scraping completed: ${totalInserted || articlesToSave.length || 0} articles saved`
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+        status: 200
       }
     );
   } catch (error) {
@@ -1136,9 +1166,9 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 500
       }
     );
   }
