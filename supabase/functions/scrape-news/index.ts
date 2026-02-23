@@ -230,14 +230,21 @@ function getSourcePriority(sourceName: string, region: string, url?: string): nu
   return 0; // Default priority for non-priority sources
 }
 
-// South American country codes — we use gl=US for these to get English-language results
-// (their native Google News editions serve Spanish/Portuguese content)
-const southAmericanCountries = new Set(['BR', 'AR', 'CO', 'CL', 'PE', 'VE', 'EC', 'UY']);
+// Non-English country codes — we use gl=US for these to get English-language results
+// (their native Google News editions serve articles in the local language)
+const nonEnglishCountries = new Set([
+  // South America
+  'BR', 'AR', 'CO', 'CL', 'PE', 'VE', 'EC', 'UY',
+  // Europe (non-English)
+  'FR', 'DE', 'IT', 'ES', 'NL', 'SE', 'PL',
+  // North America
+  'MX',
+]);
 
 // Helper: get the gl/ceid country code to use for Google News RSS
-// South American countries use US edition so results are in English
+// Non-English countries use US edition so results are in English
 function getGoogleNewsGl(countryCode: string): { gl: string; ceid: string } {
-  if (southAmericanCountries.has(countryCode)) {
+  if (nonEnglishCountries.has(countryCode)) {
     return { gl: 'US', ceid: 'US:en' };
   }
   return { gl: countryCode, ceid: `${countryCode}:en` };
