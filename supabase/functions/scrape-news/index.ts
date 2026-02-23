@@ -594,12 +594,20 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     console.log(`   ✅ Detected Dawn.com feed for ${countryName}`);
   }
 
-  // Parse RSS items
-  const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
-  const itemArray = Array.from(itemMatches);
-  console.log(`Found ${itemArray.length} RSS items in feed`);
+  // Parse RSS items - use split approach to handle various tag formats
+  // Dawn.com uses <item> tags, but some feeds use <item ...> with attributes or trailing whitespace
+  // Split on opening item tags (handles <item>, <item >, <item\n>, etc.)
+  const rawItems = xml.split(/<item[\s>]/);
+  // The first segment is before any <item>, so skip it
+  const itemSegments = rawItems.slice(1).map(seg => {
+    // Each segment is the content after <item ...> up to </item>
+    const endIdx = seg.indexOf('</item>');
+    return endIdx !== -1 ? seg.substring(0, endIdx) : seg;
+  }).filter(seg => seg.trim().length > 0);
 
-  if (itemArray.length === 0) {
+  console.log(`Found ${itemSegments.length} RSS items in feed`);
+
+  if (itemSegments.length === 0) {
     console.warn(`⚠️ No <item> tags found in RSS feed. XML preview: ${xml.substring(0, 500)}...`);
     return articles;
   }
@@ -607,8 +615,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
   // Extract and sort items by publish date (newest first) to prioritize recent articles
   const itemsWithDates: Array<{ itemXml: string; publishedAt: Date }> = [];
 
-  for (const itemMatch of itemArray) {
-    const itemXml = itemMatch[1];
+  for (const itemXml of itemSegments) {
     // Extract pubDate (supports CDATA or plain text)
     const pubDateMatch = itemXml.match(/<pubDate>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/pubDate>/);
     const rawPubDate = pubDateMatch ? (pubDateMatch[1] ?? pubDateMatch[2]) : null;
@@ -697,8 +704,9 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     const publishedTime = publishedAt.getTime();
 
     // Filter out stale items (older than ~3 days to prioritize recent news)
-    // For Dawn.com and Times of India, use a longer window (7 days) since they're trusted sources
-    const daysAgo = isDawnFeed || isTOIFeed ? 7 : 3;
+    // For Dawn.com and Times of India, use a longer window (14 days) since they're trusted sources
+    // Google News feeds also get a wider window (7 days) to catch up after periods of inactivity
+    const daysAgo = isDawnFeed || isTOIFeed ? 14 : 7;
     const cutoffTime = Date.now() - 1000 * 60 * 60 * 24 * daysAgo;
 
     if (isNaN(publishedTime)) {
@@ -814,12 +822,10 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     // We'll limit later when saving to database
   }
 
-  console.log(`📊 parseRSSFeed completed: Parsed ${articles.length} articles from ${itemArray.length} RSS items`);
-  if (isDawnFeed && articles.length === 0 && itemArray.length > 0) {
-    console.warn(`⚠️ Dawn.com feed had ${itemArray.length} items but 0 articles were parsed. This might indicate a parsing issue.`);
-    if (itemArray.length > 0) {
-      console.log(`   First item preview: ${itemArray[0]?.[1]?.substring(0, 300)}...`);
-    }
+  console.log(`📊 parseRSSFeed completed: Parsed ${articles.length} articles from ${itemSegments.length} RSS items`);
+  if (isDawnFeed && articles.length === 0 && itemSegments.length > 0) {
+    console.warn(`⚠️ Dawn.com feed had ${itemSegments.length} items but 0 articles were parsed. This might indicate a parsing issue.`);
+    console.log(`   First item preview: ${itemSegments[0]?.substring(0, 300)}...`);
   }
 
   console.log(`✅ Parsed ${articles.length} total articles from ${countryName} RSS feed`);

@@ -143,15 +143,15 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   // Fetch user favorites
   const fetchFavorites = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
         .from("favorites")
         .select("article_id")
         .eq("user_id", user.id);
-      
+
       if (error) throw error;
-      
+
       const favoriteIds = new Set(data?.map(fav => fav.article_id) || []);
       setFavorites(favoriteIds);
     } catch (error) {
@@ -162,16 +162,16 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   // Fetch user notes
   const fetchNotes = async () => {
     if (!user) return;
-    
+
     try {
       // Fetch current user's notes (both public and private)
       const { data: userNotes, error: userError } = await supabase
         .from("article_notes")
         .select("article_id, note_text, is_public")
         .eq("user_id", user.id);
-      
+
       if (userError) throw userError;
-      
+
       const notesMap = new Map();
       userNotes?.forEach(note => {
         notesMap.set(note.article_id, {
@@ -188,7 +188,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         .select("article_id, note_text, user_id")
         .eq("is_public", true)
         .neq("user_id", user.id);
-      
+
       if (publicError) {
         console.error("Error fetching public notes:", publicError);
         return;
@@ -214,14 +214,14 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   // Fetch user analyses
   const fetchAnalyses = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
         .from("user_analyses")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
-      
+
       if (error) throw error;
       setAnalyses(data || []);
     } catch (error) {
@@ -232,10 +232,10 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   // Toggle favorite
   const toggleFavorite = async (articleId: string) => {
     if (!user) return;
-    
+
     try {
       const isFavorited = favorites.has(articleId);
-      
+
       if (isFavorited) {
         // Remove from favorites
         const { error } = await supabase
@@ -243,15 +243,15 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           .delete()
           .eq("user_id", user.id)
           .eq("article_id", articleId);
-        
+
         if (error) throw error;
-        
+
         setFavorites(prev => {
           const newSet = new Set(prev);
           newSet.delete(articleId);
           return newSet;
         });
-        
+
         toast({
           title: "Removed from favorites",
           description: "Article removed from your favorites",
@@ -264,11 +264,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
             user_id: user.id,
             article_id: articleId
           });
-        
+
         if (error) throw error;
-        
+
         setFavorites(prev => new Set([...prev, articleId]));
-        
+
         toast({
           title: "Added to favorites",
           description: "Article added to your favorites",
@@ -287,26 +287,26 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   // Save note
   const saveNote = async (noteText: string, isPublic: boolean) => {
     if (!user || !notesModal.articleId) return;
-    
+
     try {
-      console.log('Saving note:', { 
-        user_id: user.id, 
-        article_id: notesModal.articleId, 
-        note_text: noteText, 
-        is_public: isPublic 
+      console.log('Saving note:', {
+        user_id: user.id,
+        article_id: notesModal.articleId,
+        note_text: noteText,
+        is_public: isPublic
       });
-      
+
       // First, try to check if the table exists by doing a simple select
       const { data: testData, error: testError } = await supabase
         .from("article_notes")
         .select("id")
         .limit(1);
-      
+
       if (testError) {
         console.error('Table check error:', testError);
         throw new Error(`Database table 'article_notes' may not exist. Please run the setup script in Supabase SQL Editor. Error: ${testError.message}`);
       }
-      
+
       // First check if note exists
       const { data: existingNote } = await supabase
         .from("article_notes")
@@ -329,7 +329,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           .eq("user_id", user.id)
           .select()
           .single();
-        
+
         result = { data, error };
       } else {
         // Insert new note
@@ -343,32 +343,32 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           })
           .select()
           .single();
-        
+
         result = { data, error };
       }
-      
+
       if (result.error) {
         console.error('Supabase save error:', result.error);
         throw result.error;
       }
-      
+
       // Verify the saved data
       console.log('Note saved successfully:', result.data);
       console.log('is_public value:', result.data?.is_public);
-      
+
       // Update local state
       setNotes(prev => {
         const newMap = new Map(prev);
         newMap.set(notesModal.articleId, { text: noteText, isPublic });
         return newMap;
       });
-      
+
       // Refresh notes from database to ensure we have the latest data
       await fetchNotes();
-      
+
       // Close the modal after successful save
       closeNotesModal();
-      
+
       toast({
         title: "Note saved",
         description: isPublic ? "Note saved and made public" : "Note saved privately",
@@ -406,7 +406,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   // Delete note
   const deleteNote = async () => {
     if (!user || !notesModal.articleId) return;
-    
+
     try {
       const { error } = await supabase
         .from("article_notes")
@@ -493,23 +493,23 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         });
 
         const regionResults = await Promise.all(regionPromises);
-        
+
         // Combine all articles from all regions
         const allRegionArticles = regionResults.flatMap(result => result.articles);
         totalCount = regionResults.reduce((sum, result) => sum + result.count, 0);
-        
+
         // Sort combined articles by published_at (newest first)
         allRegionArticles.sort((a, b) => {
           const dateA = new Date(a.published_at).getTime();
           const dateB = new Date(b.published_at).getTime();
           return dateB - dateA;
         });
-        
+
         // Apply pagination to combined results
         const startIndex = (page - 1) * ARTICLES_PER_PAGE;
         const endIndex = startIndex + ARTICLES_PER_PAGE;
         newArticles = allRegionArticles.slice(startIndex, endIndex);
-        
+
         console.log(`📊 All Regions query: category="${selectedCategory}", found ${totalCount} total articles across all regions, showing ${newArticles.length} on page ${page}`);
       } else {
         // For specific region: Query that region's table
@@ -541,10 +541,10 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         }
 
         const { data, error, count } = await query;
-        
+
         // Log for debugging
         console.log(`📊 Database query: table="${tableName}", category="${selectedCategory}", region="${selectedRegion}", found ${count || 0} articles`);
-        
+
         // If no articles found, log sample data from table to debug
         if ((count || 0) === 0 && !error) {
           const sampleQuery = (supabase.from(tableName as any) as any)
@@ -559,69 +559,69 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         if (error) {
           console.error('❌ Database query error:', error);
           const errorMessage = error?.message || String(error) || '';
-          
+
           // If error is about missing column, show helpful message and fall back
           if (errorMessage.includes('column') && errorMessage.includes('category')) {
             console.warn("⚠️ Category column doesn't exist yet. Please run the database migration.");
             console.warn("Falling back to fetching all articles without category filter...");
-            
+
             // Fall back to fetching all articles without category filter
             let fallbackQuery = (supabase.from(tableName as any) as any)
               .select("*", { count: 'exact' })
               .order("published_at", { ascending: false })
               .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
-            
+
             const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
             if (fallbackError) {
               console.error('❌ Fallback query also failed:', fallbackError);
               throw fallbackError;
             }
-            
+
             newArticles = fallbackData || [];
             totalCount = fallbackCount || 0;
-            
+
             // Show warning toast
             toast({
               title: "Category filter unavailable",
               description: "Please run the database migration to enable category filtering.",
               variant: "destructive",
             });
-            
+
             if (append) {
               setArticles(prev => [...prev, ...newArticles]);
             } else {
               setArticles(newArticles);
             }
-            
+
             setHasMore(newArticles.length === ARTICLES_PER_PAGE);
             setCurrentPage(page);
             setTotalArticles(totalCount);
-            
+
             return newArticles.length;
           }
           throw error;
         }
-        
+
         newArticles = data || [];
         totalCount = count || 0;
       }
-      
+
       setTotalArticles(totalCount);
-      
+
       if (append) {
         setArticles(prev => [...prev, ...newArticles]);
       } else {
         setArticles(newArticles);
       }
-      
+
       setHasMore(newArticles.length === ARTICLES_PER_PAGE);
       setCurrentPage(page);
-      
+
       // Log for debugging
       if (selectedCategory !== "general" && newArticles.length === 0) {
         console.log(`No articles found for category "${selectedCategory}" in region "${selectedRegion}". Total articles in DB: ${totalCount}`);
       }
-      
+
       return newArticles.length;
     } catch (error) {
       console.error("Error fetching articles:", error);
@@ -639,66 +639,66 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
   const handleScrape = async () => {
     setScraping(true);
-    
+
     // Show initial fetching message
     toast({
       title: "Fetching headlines...",
       description: `Getting ${categories.find(c => c.value === selectedCategory)?.label || "latest"} news from ${selectedRegion === "all" ? "all regions" : selectedRegion}`,
     });
-    
+
     try {
       // First, show existing articles immediately
       await fetchArticles(1, false);
-      
+
       // Create a timeout promise - increased to 45 seconds for initial fetch
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Request timeout - function took too long to respond')), 45000); // 45 second timeout
       });
-      
+
       // Create the function call promise with category
       const categoryValue = selectedCategory === "general" ? null : selectedCategory;
       console.log('Frontend sending:', { selectedCategory, categoryValue, region: selectedRegion, country: selectedCountry });
-      
-        // Initial fetch: get more articles to ensure good coverage from all countries
-        const requestBody = { 
-          category: categoryValue, 
-          region: selectedRegion === "all" ? null : selectedRegion,
-          country: selectedCountry === "all" ? null : selectedCountry,
-          limit: 100  // Fetch 100 articles to get good coverage from all countries
-        };
-      
+
+      // Initial fetch: get more articles to ensure good coverage from all countries
+      const requestBody = {
+        category: categoryValue,
+        region: selectedRegion === "all" ? null : selectedRegion,
+        country: selectedCountry === "all" ? null : selectedCountry,
+        limit: 100  // Fetch 100 articles to get good coverage from all countries
+      };
+
       console.log('📡 Fetching articles with:', requestBody);
       console.log('🔗 Expected RSS URLs will be logged in Supabase Edge Function logs');
-      
+
       const functionPromise = supabase.functions.invoke("scrape-news", {
         body: requestBody
       });
-      
+
       // Race between timeout and function call
       console.log('⏱️ Starting fetch with 45 second timeout...');
       const startTime = Date.now();
       const result = await Promise.race([functionPromise, timeoutPromise]) as any;
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
       console.log(`✅ Fetch completed in ${elapsedTime} seconds`);
-      
+
       const { data, error } = result;
-      
+
       if (error) {
         console.error('❌ Error from edge function:', error);
         throw error;
       }
-      
+
       console.log('📊 Response from edge function:', data);
-      
+
       // Refresh articles after scraping to show new ones
       // Wait longer for database to update (especially for multiple region tables)
       console.log('⏳ Waiting for database to update...');
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       // Try fetching articles, with retry if needed
       let displayedCount = await fetchArticles(1, false);
       console.log(`📈 First fetch: Scraped ${data.articlesScraped} articles, displaying ${displayedCount} articles`);
-      
+
       // If no articles displayed but articles were scraped, try again after a longer delay
       if (displayedCount === 0 && data.articlesScraped > 0) {
         console.log('⚠️ No articles displayed on first fetch, retrying after delay...');
@@ -706,17 +706,29 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         displayedCount = await fetchArticles(1, false);
         console.log(`📈 Retry fetch: Displaying ${displayedCount} articles`);
       }
-      
-      toast({
-        title: data.articlesScraped > 0 ? "Headlines fetched successfully" : "No new articles found",
-        description: data.articlesScraped > 0 
-          ? `Fetched ${data.articlesScraped} articles. ${displayedCount > 0 ? `${displayedCount} articles displayed.` : 'Articles fetched but not matching current filters.'}`
-          : 'No articles were found. Try a different category or region.',
-        variant: data.articlesScraped === 0 ? "destructive" : "default",
-      });
+
+      if (data.articlesScraped > 0) {
+        toast({
+          title: "Headlines fetched successfully",
+          description: `Fetched ${data.articlesScraped} new articles. ${displayedCount > 0 ? `${displayedCount} articles displayed.` : 'Articles fetched but not matching current filters.'}`,
+        });
+      } else if (displayedCount > 0) {
+        // Articles are already in the DB — don't alarm the user
+        toast({
+          title: "Already up to date",
+          description: `Showing ${displayedCount} cached articles. No newer articles found right now.`,
+        });
+      } else {
+        // Truly nothing available
+        toast({
+          title: "No articles found",
+          description: "No articles were found for this selection. Try a different category or region.",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error("Error scraping news:", error);
-      
+
       // Check if it's a timeout error
       if (error.message.includes('timeout')) {
         toast({
@@ -725,11 +737,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           variant: "destructive",
         });
       } else {
-      toast({
-        title: "Error fetching headlines",
-        description: "Failed to fetch articles",
-        variant: "destructive",
-      });
+        toast({
+          title: "Error fetching headlines",
+          description: "Failed to fetch articles",
+          variant: "destructive",
+        });
       }
     } finally {
       setScraping(false);
@@ -738,37 +750,37 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
   const handleLoadMore = async () => {
     if (loadingMore || !hasMore) return;
-    
+
     // If we're on the first page and have few articles, fetch more from the edge function
     if (currentPage === 1 && articles.length < 20) {
       setLoadingMore(true);
       try {
         const categoryValue = selectedCategory === "general" ? null : selectedCategory;
         const functionPromise = supabase.functions.invoke("scrape-news", {
-          body: { 
-            category: categoryValue, 
+          body: {
+            category: categoryValue,
             region: selectedRegion === "all" ? null : selectedRegion,
             country: selectedCountry === "all" ? null : selectedCountry,
             limit: 100  // Fetch more articles to get good coverage
           }
         });
-        
+
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Request timeout')), 30000);
         });
-        
+
         const result = await Promise.race([functionPromise, timeoutPromise]) as any;
         const { data, error } = result;
-      
-      if (error) throw error;
-      
+
+        if (error) throw error;
+
         // Refresh articles from database
         await fetchArticles(currentPage + 1, true);
-    } catch (error) {
+      } catch (error) {
         console.error("Error loading more articles:", error);
         // Fall back to regular pagination if edge function fails
         await fetchArticles(currentPage + 1, true);
-    } finally {
+      } finally {
         setLoadingMore(false);
       }
     } else {
@@ -778,7 +790,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   };
 
   // Filter articles based on active tab
-  const filteredArticles = activeTab === "favorites" 
+  const filteredArticles = activeTab === "favorites"
     ? articles.filter(article => favorites.has(article.id))
     : articles;
 
@@ -792,19 +804,19 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     const autoFetch = async () => {
       // First, fetch existing articles from database
       const count = await fetchArticles(1, false, selectedCountry);
-      
+
       // Always auto-fetch new headlines when filters change
       console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", Country="${selectedCountry}", found ${count} existing articles`);
-      
+
       // Call scrape in background (don't await to avoid blocking UI)
       const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-      const requestBody = { 
-        category: categoryValue, 
+      const requestBody = {
+        category: categoryValue,
         region: selectedRegion === "all" ? null : selectedRegion,
         country: selectedCountry === "all" ? null : selectedCountry,
         limit: 100
       };
-      
+
       supabase.functions.invoke("scrape-news", { body: requestBody })
         .then(async (result: any) => {
           const { data, error } = result;
@@ -812,7 +824,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
             console.error('Auto-fetch error:', error);
             return;
           }
-          
+
           // Wait a moment for database to update, then refresh articles
           await new Promise(resolve => setTimeout(resolve, 500));
           await fetchArticles(1, false, selectedCountry);
@@ -821,7 +833,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           console.error('Auto-fetch error:', err);
         });
     };
-    
+
     autoFetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, selectedRegion, selectedCountry]);
@@ -878,12 +890,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
           {/* Main Header Content */}
           <div className="text-center">
-          <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
-            Latest Now
-          </h1>
-          <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            Breaking news from around the world
-          </p>
+            <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
+              Latest Now
+            </h1>
+            <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
+              Breaking news from around the world
+            </p>
             <div className="mt-8 flex justify-center">
               <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce-gentle"></div>
               <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce-gentle mx-2" style={{ animationDelay: '0.1s' }}></div>
@@ -916,48 +928,48 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                   </Button>
                 );
               })}
-              </div>
-            
+            </div>
+
             {/* Region Selector and Fetch Button */}
             <div className="flex gap-3 items-center flex-wrap">
-            <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+              <Select value={selectedRegion} onValueChange={setSelectedRegion}>
                 <SelectTrigger className="w-[180px] h-11 border-border/50 hover:border-primary/50 transition-colors">
-                <SelectValue placeholder="Select region" />
-              </SelectTrigger>
-              <SelectContent>
-                {regions.map((region) => (
-                  <SelectItem key={region.value} value={region.value}>
-                    {region.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Country selector — visible only when a specific region is selected */}
-            {selectedRegion !== "all" && countriesByRegion[selectedRegion] && (
-              <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                <SelectTrigger className="w-[200px] h-11 border-border/50 hover:border-primary/50 transition-colors">
-                  <SelectValue placeholder="All Countries" />
+                  <SelectValue placeholder="Select region" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Countries</SelectItem>
-                  {countriesByRegion[selectedRegion].map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.name}
+                  {regions.map((region) => (
+                    <SelectItem key={region.value} value={region.value}>
+                      {region.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            )}
-              <Button 
-                onClick={handleScrape} 
-                disabled={scraping} 
-                variant="secondary" 
+
+              {/* Country selector — visible only when a specific region is selected */}
+              {selectedRegion !== "all" && countriesByRegion[selectedRegion] && (
+                <Select value={selectedCountry} onValueChange={setSelectedCountry}>
+                  <SelectTrigger className="w-[200px] h-11 border-border/50 hover:border-primary/50 transition-colors">
+                    <SelectValue placeholder="All Countries" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Countries</SelectItem>
+                    {countriesByRegion[selectedRegion].map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                onClick={handleScrape}
+                disabled={scraping}
+                variant="secondary"
                 className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95 hover-glow disabled:opacity-50 disabled:cursor-not-allowed"
               >
-              <RefreshCw className={`w-4 h-4 mr-2 ${scraping ? 'animate-spin' : ''}`} />
-              {scraping ? "Fetching Headlines..." : "Fetch Headlines"}
-            </Button>
+                <RefreshCw className={`w-4 h-4 mr-2 ${scraping ? 'animate-spin' : ''}`} />
+                {scraping ? "Fetching Headlines..." : "Fetch Headlines"}
+              </Button>
             </div>
           </div>
         </div>
@@ -976,7 +988,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
             </p>
           </div>
         </div>
-        
+
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "all" | "favorites" | "analysis")} className="mb-8">
           <TabsList className="grid w-full max-w-md grid-cols-3">
@@ -993,26 +1005,26 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               Analysis
             </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="all" className="mt-6">
             {renderArticles(articles)}
           </TabsContent>
-          
+
           <TabsContent value="favorites" className="mt-6">
             {renderArticles(filteredArticles)}
           </TabsContent>
 
           <TabsContent value="analysis" className="mt-6">
             <div className="flex gap-6 min-h-[600px]">
-              <UserSidebar 
+              <UserSidebar
                 currentUserId={user?.id}
                 onSelectUser={(userId, userName) => {
                   setSelectedUserId(userId);
                   setSelectedUserName(userName);
                   setEditingAnalysis(null);
-                }} 
+                }}
               />
-              
+
               {selectedUserId ? (
                 <UserContentViewer
                   userId={selectedUserId}
@@ -1035,8 +1047,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                     <h3 className="text-xl font-semibold mb-4">
                       {editingAnalysis ? "Edit Analysis" : "Create New Analysis"}
                     </h3>
-                    <AnalysisEditor 
-                      userId={user.id} 
+                    <AnalysisEditor
+                      userId={user.id}
                       onSave={() => {
                         fetchAnalyses();
                         setEditingAnalysis(null);
@@ -1045,7 +1057,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                       onCancel={() => setEditingAnalysis(null)}
                     />
                   </div>
-                  
+
                   <div className="mt-8">
                     <h3 className="text-xl font-semibold mb-4">My Analyses</h3>
                     {analyses.length === 0 ? (
@@ -1114,7 +1126,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                                             .delete()
                                             .eq('id', analysis.id)
                                             .eq('user_id', user.id);
-                                          
+
                                           if (error) throw error;
                                           fetchAnalyses();
                                           toast({
@@ -1184,14 +1196,14 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               {activeTab === "favorites" ? (
                 <Heart className="w-8 h-8 text-muted-foreground" />
               ) : (
-              <Search className="w-8 h-8 text-muted-foreground" />
+                <Search className="w-8 h-8 text-muted-foreground" />
               )}
             </div>
             <p className="text-xl font-semibold text-foreground mb-2">
               {activeTab === "favorites" ? "No favorites yet" : "No articles found"}
             </p>
             <p className="text-sm text-muted-foreground mb-6">
-              {activeTab === "favorites" 
+              {activeTab === "favorites"
                 ? "Start adding articles to your favorites by clicking the heart icon"
                 : "Try fetching headlines or searching for a specific topic"
               }
@@ -1207,27 +1219,27 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           </div>
         ) : (
           <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {articlesToRender.map((article, index) => {
                 const noteData = notes.get(article.id);
                 const articlePublicNotes = publicNotes.get(article.id) || [];
                 return (
-              <div 
-                key={article.id} 
-                style={{ 
-                  animationDelay: `${index * 0.05}s`,
-                  animationFillMode: 'both'
-                }} 
-                className="animate-fade-in"
-              >
-                <ArticleCard
-                  title={article.title}
-                  snippet={article.snippet}
-                  url={article.url}
-                  sourceName={article.source_name}
-                  sourceCountry={article.source_country}
-                  sourceRegion={article.source_region}
-                  publishedAt={article.published_at}
+                  <div
+                    key={article.id}
+                    style={{
+                      animationDelay: `${index * 0.05}s`,
+                      animationFillMode: 'both'
+                    }}
+                    className="animate-fade-in"
+                  >
+                    <ArticleCard
+                      title={article.title}
+                      snippet={article.snippet}
+                      url={article.url}
+                      sourceName={article.source_name}
+                      sourceCountry={article.source_country}
+                      sourceRegion={article.source_region}
+                      publishedAt={article.published_at}
                       articleId={article.id}
                       userId={user?.id}
                       isFavorited={favorites.has(article.id)}
@@ -1236,12 +1248,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                       publicNotes={articlePublicNotes}
                       onToggleFavorite={toggleFavorite}
                       onOpenNotes={openNotesModal}
-                />
-              </div>
+                    />
+                  </div>
                 );
               })}
             </div>
-            
+
             {/* Load More Button */}
             {hasMore && articlesToRender.length > 0 && activeTab === "all" && (
               <div className="flex justify-center mt-12">
@@ -1263,9 +1275,9 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                     </>
                   )}
                 </Button>
-          </div>
-        )}
-            
+              </div>
+            )}
+
             {/* Background Loading Indicator */}
             {scraping && (
               <div className="fixed bottom-6 right-6 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg px-4 py-3 shadow-lg animate-slide-up">
@@ -1273,12 +1285,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                   <RefreshCw className="w-4 h-4 text-primary animate-spin" />
                   <span className="text-sm font-medium">Fetching fresh headlines...</span>
                 </div>
-    </div>
+              </div>
             )}
           </>
         )}
       </>
-  );
+    );
   }
 };
 
