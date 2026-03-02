@@ -46,6 +46,8 @@ const countriesByRegion: Record<string, { code: string; name: string }[]> = {
     { code: "IR", name: "Iran" },
     { code: "SY", name: "Syria" },
     { code: "BD", name: "Bangladesh" },
+    { code: "IL", name: "Israel" },
+    { code: "LK", name: "Sri Lanka" },
     { code: "AE", name: "United Arab Emirates" },
   ],
   Europe: [

@@ -24,6 +24,8 @@ function getLocaleForCountry(countryCode: string): string {
     'IR': 'en-US', // Iran (use US edition for English results)
     'SY': 'en-US', // Syria (use US edition for English results)
     'BD': 'en-BD', // Bangladesh
+    'IL': 'en-IL', // Israel
+    'LK': 'en-LK', // Sri Lanka
     'AE': 'en-AE', // UAE
     // North America
     'US': 'en-US', // United States
@@ -259,7 +261,7 @@ const countryToRegion: Record<string, string> = {
   // Africa
   'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa', 'GH': 'Africa', 'MA': 'Africa', 'ET': 'Africa', 'TZ': 'Africa',
   // Asia
-  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'AE': 'Asia',
+  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'IL': 'Asia', 'LK': 'Asia', 'AE': 'Asia',
   // Europe
   'GB': 'Europe', 'FR': 'Europe', 'DE': 'Europe', 'IT': 'Europe', 'ES': 'Europe', 'NL': 'Europe', 'SE': 'Europe', 'PL': 'Europe',
   // North America
@@ -282,6 +284,8 @@ const countryKeywords: Record<string, string[]> = {
   'IR': ['iran', 'iranian', 'tehran', 'persian'],
   'SY': ['syria', 'syrian', 'damascus', 'aleppo'],
   'BD': ['bangladesh', 'bangladeshi', 'dhaka', 'chittagong'],
+  'IL': ['israel', 'israeli', 'tel aviv', 'jerusalem'],
+  'LK': ['sri lanka', 'sri lankan', 'colombo', 'sinhala', 'sinhalese'],
   'CN': ['china', 'chinese', 'beijing', 'shanghai', 'hong kong'],
   'JP': ['japan', 'japanese', 'tokyo', 'osaka'],
   'GB': ['united kingdom', 'uk', 'britain', 'british', 'london', 'england', 'scotland'],
@@ -296,7 +300,7 @@ const countryKeywords: Record<string, string[]> = {
 // We'll only use it if it's clearly a Colombian domain (ends with .co and not .co.XX)
 const tldToCountry: Record<string, string> = {
   '.us': 'US', '.ca': 'CA', '.mx': 'MX', '.br': 'BR', '.ar': 'AR', '.cl': 'CL', '.pe': 'PE', '.ve': 'VE', '.ec': 'EC', '.uy': 'UY',
-  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.ae': 'AE',
+  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.il': 'IL', '.lk': 'LK', '.ae': 'AE',
   '.uk': 'GB', '.fr': 'FR', '.de': 'DE', '.it': 'IT', '.es': 'ES', '.nl': 'NL', '.se': 'SE', '.pl': 'PL',
   '.za': 'ZA', '.ng': 'NG', '.eg': 'EG', '.ke': 'KE', '.gh': 'GH', '.ma': 'MA', '.et': 'ET', '.tz': 'TZ',
   '.au': 'AU', '.nz': 'NZ', '.fj': 'FJ', '.pg': 'PG',
@@ -382,6 +386,8 @@ const regionConfigs: RegionConfig[] = [
       { code: 'IR', name: 'Iran' },
       { code: 'SY', name: 'Syria' },
       { code: 'BD', name: 'Bangladesh' },
+      { code: 'IL', name: 'Israel' },
+      { code: 'LK', name: 'Sri Lanka' },
       { code: 'AE', name: 'United Arab Emirates' },
     ]
   },
@@ -610,6 +616,62 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
         } else if (category === 'religion-spirituality') {
           urls.push(`${bdBase}?q=Bangladesh+Religion+OR+Spirituality+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
           console.log(`🔗 Bangladesh RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'IL') {
+        // Israel: Use Google News RSS with IL locale and when:4d filter
+        const ilBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${ilBase}?q=Israel+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${ilBase}?q=Israel+Technology+OR+AI+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${ilBase}?q=Israel+Business+OR+Economy+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${ilBase}?q=Israel+Politics+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${ilBase}?q=Israel+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${ilBase}?q=Israel+Sports+OR+Gaming+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${ilBase}?q=Israel+Travel+OR+Leisure+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${ilBase}?q=Israel+Religion+OR+Spirituality+when:4d&hl=en-IL&gl=IL&ceid=IL:en`);
+          console.log(`🔗 Israel RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'LK') {
+        // Sri Lanka: Use Google News RSS with LK locale and when:4d filter
+        const lkBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${lkBase}?q=Sri+Lanka+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Technology+OR+AI+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Business+OR+Economy+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Politics+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Sports+OR+Gaming+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Travel+OR+Leisure+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${lkBase}?q=Sri+Lanka+Religion+OR+Spirituality+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
+          console.log(`🔗 Sri Lanka RSS URL [Religion]: ${urls[urls.length - 1]}`);
         }
       } else {
         // Other countries: Use Google News RSS
