@@ -20,6 +20,10 @@ function getLocaleForCountry(countryCode: string): string {
     'SG': 'en-SG', // Singapore
     'SA': 'en-SA', // Saudi Arabia
     'KR': 'en-KR', // South Korea
+    'NP': 'en-NP', // Nepal
+    'IR': 'en-US', // Iran (use US edition for English results)
+    'SY': 'en-US', // Syria (use US edition for English results)
+    'BD': 'en-BD', // Bangladesh
     'AE': 'en-AE', // UAE
     // North America
     'US': 'en-US', // United States
@@ -255,7 +259,7 @@ const countryToRegion: Record<string, string> = {
   // Africa
   'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa', 'GH': 'Africa', 'MA': 'Africa', 'ET': 'Africa', 'TZ': 'Africa',
   // Asia
-  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'AE': 'Asia',
+  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'AE': 'Asia',
   // Europe
   'GB': 'Europe', 'FR': 'Europe', 'DE': 'Europe', 'IT': 'Europe', 'ES': 'Europe', 'NL': 'Europe', 'SE': 'Europe', 'PL': 'Europe',
   // North America
@@ -274,6 +278,10 @@ const countryKeywords: Record<string, string[]> = {
   'BR': ['brazil', 'brazilian', 'brasil', 'são paulo', 'rio de janeiro'],
   'AR': ['argentina', 'argentine', 'buenos aires'],
   'IN': ['india', 'indian', 'delhi', 'mumbai', 'bangalore', 'kolkata'],
+  'NP': ['nepal', 'nepali', 'nepalese', 'kathmandu', 'pokhara'],
+  'IR': ['iran', 'iranian', 'tehran', 'persian'],
+  'SY': ['syria', 'syrian', 'damascus', 'aleppo'],
+  'BD': ['bangladesh', 'bangladeshi', 'dhaka', 'chittagong'],
   'CN': ['china', 'chinese', 'beijing', 'shanghai', 'hong kong'],
   'JP': ['japan', 'japanese', 'tokyo', 'osaka'],
   'GB': ['united kingdom', 'uk', 'britain', 'british', 'london', 'england', 'scotland'],
@@ -288,7 +296,7 @@ const countryKeywords: Record<string, string[]> = {
 // We'll only use it if it's clearly a Colombian domain (ends with .co and not .co.XX)
 const tldToCountry: Record<string, string> = {
   '.us': 'US', '.ca': 'CA', '.mx': 'MX', '.br': 'BR', '.ar': 'AR', '.cl': 'CL', '.pe': 'PE', '.ve': 'VE', '.ec': 'EC', '.uy': 'UY',
-  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.ae': 'AE',
+  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.ae': 'AE',
   '.uk': 'GB', '.fr': 'FR', '.de': 'DE', '.it': 'IT', '.es': 'ES', '.nl': 'NL', '.se': 'SE', '.pl': 'PL',
   '.za': 'ZA', '.ng': 'NG', '.eg': 'EG', '.ke': 'KE', '.gh': 'GH', '.ma': 'MA', '.et': 'ET', '.tz': 'TZ',
   '.au': 'AU', '.nz': 'NZ', '.fj': 'FJ', '.pg': 'PG',
@@ -370,6 +378,10 @@ const regionConfigs: RegionConfig[] = [
       { code: 'SA', name: 'Saudi Arabia' },
       { code: 'KR', name: 'South Korea' },
       { code: 'PK', name: 'Pakistan' },
+      { code: 'NP', name: 'Nepal' },
+      { code: 'IR', name: 'Iran' },
+      { code: 'SY', name: 'Syria' },
+      { code: 'BD', name: 'Bangladesh' },
       { code: 'AE', name: 'United Arab Emirates' },
     ]
   },
@@ -486,6 +498,118 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
           const locale = getLocaleForCountry(country.code);
           urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${queryString}&gl=${country.code}&hl=${locale}&ceid=${country.code}:en`);
           console.log(`🔗 Google News RSS URL [${category}]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'NP') {
+        // Nepal: Use specific Google News RSS URLs with when:4d time filter
+        const nepalBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${nepalBase}?q=Nepal+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${nepalBase}?q=Nepal+Technology+OR+AI+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${nepalBase}?q=Nepal+Business+OR+Economy+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${nepalBase}?q=Nepal+Politics+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${nepalBase}?q=Nepal+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${nepalBase}?q=Nepal+Sports+OR+Gaming+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${nepalBase}?q=Nepal+Travel+OR+Leisure+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${nepalBase}?q=Nepal+Religion+OR+Spirituality+when:4d&hl=en-NP&gl=NP&ceid=NP:en`);
+          console.log(`🔗 Nepal RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'IR') {
+        // Iran: Use Google News RSS with US edition for English results and when:4d filter
+        const iranBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${iranBase}?q=Iran+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${iranBase}?q=Iran+Technology+OR+AI+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${iranBase}?q=Iran+Business+OR+Economy+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${iranBase}?q=Iran+Politics+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${iranBase}?q=Iran+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${iranBase}?q=Iran+Sports+OR+Gaming+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${iranBase}?q=Iran+Travel+OR+Leisure+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${iranBase}?q=Iran+Religion+OR+Spirituality+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Iran RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'SY') {
+        // Syria: Use Google News RSS with US edition for English results and when:4d filter
+        const syriaBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${syriaBase}?q=Syria+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${syriaBase}?q=Syria+Technology+OR+AI+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${syriaBase}?q=Syria+Business+OR+Economy+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${syriaBase}?q=Syria+Politics+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${syriaBase}?q=Syria+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${syriaBase}?q=Syria+Sports+OR+Gaming+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${syriaBase}?q=Syria+Travel+OR+Leisure+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${syriaBase}?q=Syria+Religion+OR+Spirituality+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Syria RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'BD') {
+        // Bangladesh: Use Google News RSS with BD locale and when:4d filter
+        const bdBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${bdBase}?q=Bangladesh+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${bdBase}?q=Bangladesh+Technology+OR+AI+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${bdBase}?q=Bangladesh+Business+OR+Economy+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${bdBase}?q=Bangladesh+Politics+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${bdBase}?q=Bangladesh+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${bdBase}?q=Bangladesh+Sports+OR+Gaming+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${bdBase}?q=Bangladesh+Travel+OR+Leisure+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${bdBase}?q=Bangladesh+Religion+OR+Spirituality+when:4d&hl=en-BD&gl=BD&ceid=BD:en`);
+          console.log(`🔗 Bangladesh RSS URL [Religion]: ${urls[urls.length - 1]}`);
         }
       } else {
         // Other countries: Use Google News RSS

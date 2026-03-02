@@ -42,6 +42,10 @@ const countriesByRegion: Record<string, { code: string; name: string }[]> = {
     { code: "SA", name: "Saudi Arabia" },
     { code: "KR", name: "South Korea" },
     { code: "PK", name: "Pakistan" },
+    { code: "NP", name: "Nepal" },
+    { code: "IR", name: "Iran" },
+    { code: "SY", name: "Syria" },
+    { code: "BD", name: "Bangladesh" },
     { code: "AE", name: "United Arab Emirates" },
   ],
   Europe: [
@@ -719,11 +723,9 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           description: `Showing ${displayedCount} cached articles. No newer articles found right now.`,
         });
       } else {
-        // Truly nothing available
         toast({
-          title: "No articles found",
-          description: "No articles were found for this selection. Try a different category or region.",
-          variant: "destructive",
+          title: "That's all we have for now",
+          description: "Check back soon to get new headlines, or try a different category or region!",
         });
       }
     } catch (error) {
@@ -1200,12 +1202,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               )}
             </div>
             <p className="text-xl font-semibold text-foreground mb-2">
-              {activeTab === "favorites" ? "No favorites yet" : "No articles found"}
+              {activeTab === "favorites" ? "No favorites yet" : "That's all we have for now"}
             </p>
             <p className="text-sm text-muted-foreground mb-6">
               {activeTab === "favorites"
                 ? "Start adding articles to your favorites by clicking the heart icon"
-                : "Try fetching headlines or searching for a specific topic"
+                : "Check back soon to get new headlines, or try a different category or region!"
               }
             </p>
             {activeTab === "all" && (
