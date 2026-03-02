@@ -26,6 +26,11 @@ function getLocaleForCountry(countryCode: string): string {
     'BD': 'en-BD', // Bangladesh
     'IL': 'en-IL', // Israel
     'LK': 'en-LK', // Sri Lanka
+    'AF': 'en-US', // Afghanistan (use US edition for English results)
+    'QA': 'en-QA', // Qatar
+    'JO': 'en-US', // Jordan (use US edition for English results)
+    'OM': 'en-US', // Oman (use US edition for English results)
+    'YE': 'en-US', // Yemen (use US edition for English results)
     'AE': 'en-AE', // UAE
     // North America
     'US': 'en-US', // United States
@@ -124,42 +129,42 @@ interface RegionConfig {
 // These sources will be displayed first
 // Key can be source name or domain
 const asiaPrioritySources: Record<string, number> = {
-  // Domains - Dawn.com is highest priority for Pakistan, Times of India highest for India
-  'dawn.com': 150, // Highest priority for Pakistan
-  'timesofindia.com': 150, // Highest priority for India
-  'timesofindia.indiatimes.com': 150, // Highest priority for India
-  'dailyindependent.com.pk': 100,
-  'hindustantimes.com': 90,
-  'thehindu.com': 85,
-  'indianexpress.com': 80,
-  'deccanherald.com': 75,
-  'tribuneindia.com': 70,
-  'thenews.com.pk': 60,
-  'scmp.com': 55,
-  'chinadaily.com.cn': 50,
-  'japantimes.co.jp': 45,
-  'straitstimes.com': 40,
-  'arabnews.com': 35,
-  'koreatimes.co.kr': 30,
-  'koreaherald.com': 25,
+  // Domains - Dawn.com and Times of India get a small boost but don't dominate over Google News
+  'dawn.com': 10,
+  'timesofindia.com': 10,
+  'timesofindia.indiatimes.com': 10,
+  'dailyindependent.com.pk': 5,
+  'hindustantimes.com': 5,
+  'thehindu.com': 5,
+  'indianexpress.com': 5,
+  'deccanherald.com': 5,
+  'tribuneindia.com': 5,
+  'thenews.com.pk': 5,
+  'scmp.com': 5,
+  'chinadaily.com.cn': 5,
+  'japantimes.co.jp': 5,
+  'straitstimes.com': 5,
+  'arabnews.com': 5,
+  'koreatimes.co.kr': 5,
+  'koreaherald.com': 5,
   // Source names (for RSS feed source tags)
-  'dawn': 150, // Highest priority for Pakistan
-  'times of india': 150, // Highest priority for India
-  'the times of india': 150, // Highest priority for India
-  'toi': 150, // Times of India abbreviation
-  'hindustan times': 90,
-  'the hindu': 85,
-  'indian express': 80,
-  'deccan herald': 75,
-  'the tribune': 70,
-  'the news international': 60,
-  'south china morning post': 55,
-  'china daily': 50,
-  'japan times': 45,
-  'straits times': 40,
-  'arab news': 35,
-  'korea times': 30,
-  'korea herald': 25,
+  'dawn': 10,
+  'times of india': 10,
+  'the times of india': 10,
+  'toi': 10,
+  'hindustan times': 5,
+  'the hindu': 5,
+  'indian express': 5,
+  'deccan herald': 5,
+  'the tribune': 5,
+  'the news international': 5,
+  'south china morning post': 5,
+  'china daily': 5,
+  'japan times': 5,
+  'straits times': 5,
+  'arab news': 5,
+  'korea times': 5,
+  'korea herald': 5,
   // Add more trusted sources as needed
 };
 
@@ -200,23 +205,23 @@ function getSourcePriority(sourceName: string, region: string, url?: string): nu
     // Also check for common variations and abbreviations
     // Times of India variations
     if (sourceLower.includes('toi') || sourceLower.includes('timesofindia') || sourceLower.includes('times of india')) {
-      console.log(`   ✅ Priority match (variation): "${sourceName}" -> Times of India (priority: 150)`);
-      return 150;
+      console.log(`   ✅ Priority match (variation): "${sourceName}" -> Times of India (priority: 10)`);
+      return 10;
     }
     // Hindustan Times variations
     if (sourceLower.includes('ht ') || sourceLower.includes('hindustantimes') || sourceLower.includes('hindustan times')) {
-      console.log(`   ✅ Priority match (variation): "${sourceName}" -> Hindustan Times (priority: 90)`);
-      return 90;
+      console.log(`   ✅ Priority match (variation): "${sourceName}" -> Hindustan Times (priority: 5)`);
+      return 5;
     }
     // The Hindu variations
     if (sourceLower.includes('thehindu') || sourceLower.includes('the hindu')) {
-      console.log(`   ✅ Priority match (variation): "${sourceName}" -> The Hindu (priority: 85)`);
-      return 85;
+      console.log(`   ✅ Priority match (variation): "${sourceName}" -> The Hindu (priority: 5)`);
+      return 5;
     }
     // Indian Express variations
     if (sourceLower.includes('indianexpress') || sourceLower.includes('indian express')) {
-      console.log(`   ✅ Priority match (variation): "${sourceName}" -> Indian Express (priority: 80)`);
-      return 80;
+      console.log(`   ✅ Priority match (variation): "${sourceName}" -> Indian Express (priority: 5)`);
+      return 5;
     }
 
     // Then check URL domain if available (for non-Google News URLs)
@@ -261,7 +266,7 @@ const countryToRegion: Record<string, string> = {
   // Africa
   'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa', 'GH': 'Africa', 'MA': 'Africa', 'ET': 'Africa', 'TZ': 'Africa',
   // Asia
-  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'IL': 'Asia', 'LK': 'Asia', 'AE': 'Asia',
+  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'IL': 'Asia', 'LK': 'Asia', 'AF': 'Asia', 'QA': 'Asia', 'JO': 'Asia', 'OM': 'Asia', 'YE': 'Asia', 'AE': 'Asia',
   // Europe
   'GB': 'Europe', 'FR': 'Europe', 'DE': 'Europe', 'IT': 'Europe', 'ES': 'Europe', 'NL': 'Europe', 'SE': 'Europe', 'PL': 'Europe',
   // North America
@@ -286,6 +291,11 @@ const countryKeywords: Record<string, string[]> = {
   'BD': ['bangladesh', 'bangladeshi', 'dhaka', 'chittagong'],
   'IL': ['israel', 'israeli', 'tel aviv', 'jerusalem'],
   'LK': ['sri lanka', 'sri lankan', 'colombo', 'sinhala', 'sinhalese'],
+  'AF': ['afghanistan', 'afghan', 'kabul', 'taliban'],
+  'QA': ['qatar', 'qatari', 'doha'],
+  'JO': ['jordan', 'jordanian', 'amman'],
+  'OM': ['oman', 'omani', 'muscat'],
+  'YE': ['yemen', 'yemeni', 'sanaa', 'aden', 'houthi'],
   'CN': ['china', 'chinese', 'beijing', 'shanghai', 'hong kong'],
   'JP': ['japan', 'japanese', 'tokyo', 'osaka'],
   'GB': ['united kingdom', 'uk', 'britain', 'british', 'london', 'england', 'scotland'],
@@ -300,7 +310,7 @@ const countryKeywords: Record<string, string[]> = {
 // We'll only use it if it's clearly a Colombian domain (ends with .co and not .co.XX)
 const tldToCountry: Record<string, string> = {
   '.us': 'US', '.ca': 'CA', '.mx': 'MX', '.br': 'BR', '.ar': 'AR', '.cl': 'CL', '.pe': 'PE', '.ve': 'VE', '.ec': 'EC', '.uy': 'UY',
-  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.il': 'IL', '.lk': 'LK', '.ae': 'AE',
+  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.il': 'IL', '.lk': 'LK', '.af': 'AF', '.qa': 'QA', '.jo': 'JO', '.om': 'OM', '.ye': 'YE', '.ae': 'AE',
   '.uk': 'GB', '.fr': 'FR', '.de': 'DE', '.it': 'IT', '.es': 'ES', '.nl': 'NL', '.se': 'SE', '.pl': 'PL',
   '.za': 'ZA', '.ng': 'NG', '.eg': 'EG', '.ke': 'KE', '.gh': 'GH', '.ma': 'MA', '.et': 'ET', '.tz': 'TZ',
   '.au': 'AU', '.nz': 'NZ', '.fj': 'FJ', '.pg': 'PG',
@@ -388,6 +398,11 @@ const regionConfigs: RegionConfig[] = [
       { code: 'BD', name: 'Bangladesh' },
       { code: 'IL', name: 'Israel' },
       { code: 'LK', name: 'Sri Lanka' },
+      { code: 'AF', name: 'Afghanistan' },
+      { code: 'QA', name: 'Qatar' },
+      { code: 'JO', name: 'Jordan' },
+      { code: 'OM', name: 'Oman' },
+      { code: 'YE', name: 'Yemen' },
       { code: 'AE', name: 'United Arab Emirates' },
     ]
   },
@@ -450,32 +465,40 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
       const urls: string[] = [];
 
       if (country.code === 'PK') {
-        // Pakistan: Use Dawn.com RSS feeds directly
+        // Pakistan: Use Dawn.com RSS feeds + Google News RSS for broader coverage
+        const pkBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
         if (!category || category === 'general') {
-          // General news from Dawn.com
           urls.push('https://www.dawn.com/feeds/');
           console.log(`🔗 Dawn.com RSS URL [General]: https://www.dawn.com/feeds/`);
+          urls.push(`${pkBase}?q=Pakistan+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [General]: ${urls[urls.length - 1]}`);
         } else if (category === 'tech-ai') {
-          // Tech news from Dawn.com
           urls.push('https://www.dawn.com/feeds/tech');
           console.log(`🔗 Dawn.com RSS URL [Tech]: https://www.dawn.com/feeds/tech`);
+          urls.push(`${pkBase}?q=Pakistan+Technology+OR+AI+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
         } else if (category === 'sports-games') {
-          // Sports news from Dawn.com
           urls.push('https://www.dawn.com/feeds/sport');
           console.log(`🔗 Dawn.com RSS URL [Sports]: https://www.dawn.com/feeds/sport`);
+          urls.push(`${pkBase}?q=Pakistan+Sports+OR+Gaming+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Sports]: ${urls[urls.length - 1]}`);
         } else if (category === 'business-finance') {
-          // Business news from Dawn.com
           urls.push('https://www.dawn.com/feeds/business');
           console.log(`🔗 Dawn.com RSS URL [Business]: https://www.dawn.com/feeds/business`);
-        }
-
-        // For other categories, still use Google News as fallback
-        if (category && category !== 'general' && category !== 'tech-ai' && category !== 'sports-games' && category !== 'business-finance') {
-          const categoryQuery = categoryQueries[category];
-          const queryString = buildGoogleNewsQuery(categoryQuery, country.name);
-          const locale = getLocaleForCountry(country.code);
-          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${queryString}&gl=${country.code}&hl=${locale}&ceid=${country.code}:en`);
-          console.log(`🔗 Google News RSS URL [${category}]: ${urls[urls.length - 1]}`);
+          urls.push(`${pkBase}?q=Pakistan+Business+OR+Economy+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${pkBase}?q=Pakistan+Politics+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${pkBase}?q=Pakistan+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${pkBase}?q=Pakistan+Travel+OR+Leisure+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${pkBase}?q=Pakistan+Religion+OR+Spirituality+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan Google News RSS URL [Religion]: ${urls[urls.length - 1]}`);
         }
       } else if (country.code === 'IN') {
         // India: Use Times of India RSS feeds directly
@@ -672,6 +695,146 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
         } else if (category === 'religion-spirituality') {
           urls.push(`${lkBase}?q=Sri+Lanka+Religion+OR+Spirituality+when:4d&hl=en-LK&gl=LK&ceid=LK:en`);
           console.log(`🔗 Sri Lanka RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'AF') {
+        // Afghanistan: Use Google News RSS with US edition for English results and when:4d filter
+        const afBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${afBase}?q=Afghanistan+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${afBase}?q=Afghanistan+Technology+OR+AI+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${afBase}?q=Afghanistan+Business+OR+Economy+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${afBase}?q=Afghanistan+Politics+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${afBase}?q=Afghanistan+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${afBase}?q=Afghanistan+Sports+OR+Gaming+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${afBase}?q=Afghanistan+Travel+OR+Leisure+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${afBase}?q=Afghanistan+Religion+OR+Spirituality+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Afghanistan RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'QA') {
+        // Qatar: Use Google News RSS with QA locale and when:4d filter
+        const qaBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${qaBase}?q=Qatar+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${qaBase}?q=Qatar+Technology+OR+AI+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${qaBase}?q=Qatar+Business+OR+Economy+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${qaBase}?q=Qatar+Politics+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${qaBase}?q=Qatar+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${qaBase}?q=Qatar+Sports+OR+Gaming+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${qaBase}?q=Qatar+Travel+OR+Leisure+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${qaBase}?q=Qatar+Religion+OR+Spirituality+when:4d&hl=en-QA&gl=QA&ceid=QA:en`);
+          console.log(`🔗 Qatar RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'JO') {
+        // Jordan: Use Google News RSS with US edition for English results and when:4d filter
+        const joBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${joBase}?q=Jordan+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${joBase}?q=Jordan+Technology+OR+AI+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${joBase}?q=Jordan+Business+OR+Economy+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${joBase}?q=Jordan+Politics+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${joBase}?q=Jordan+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${joBase}?q=Jordan+Sports+OR+Gaming+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${joBase}?q=Jordan+Travel+OR+Leisure+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${joBase}?q=Jordan+Religion+OR+Spirituality+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Jordan RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'OM') {
+        // Oman: Use Google News RSS with US edition for English results and when:4d filter
+        const omBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${omBase}?q=Oman+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${omBase}?q=Oman+Technology+OR+AI+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${omBase}?q=Oman+Business+OR+Economy+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${omBase}?q=Oman+Politics+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${omBase}?q=Oman+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${omBase}?q=Oman+Sports+OR+Gaming+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${omBase}?q=Oman+Travel+OR+Leisure+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${omBase}?q=Oman+Religion+OR+Spirituality+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Oman RSS URL [Religion]: ${urls[urls.length - 1]}`);
+        }
+      } else if (country.code === 'YE') {
+        // Yemen: Use Google News RSS with US edition for English results and when:4d filter
+        const yeBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
+        if (!category || category === 'general') {
+          urls.push(`${yeBase}?q=Yemen+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${yeBase}?q=Yemen+Technology+OR+AI+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
+        } else if (category === 'business-finance') {
+          urls.push(`${yeBase}?q=Yemen+Business+OR+Economy+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${yeBase}?q=Yemen+Politics+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${yeBase}?q=Yemen+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${yeBase}?q=Yemen+Sports+OR+Gaming+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${yeBase}?q=Yemen+Travel+OR+Leisure+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${yeBase}?q=Yemen+Religion+OR+Spirituality+when:4d&hl=en-US&gl=US&ceid=US:en`);
+          console.log(`🔗 Yemen RSS URL [Religion]: ${urls[urls.length - 1]}`);
         }
       } else {
         // Other countries: Use Google News RSS
