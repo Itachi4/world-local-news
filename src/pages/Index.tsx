@@ -478,12 +478,13 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           'articles_south_america',
         ];
 
+        // Fetch enough per region to support several pages of round-robin interleaving
+        const PER_REGION_LIMIT = 30;
         const regionPromises = regionTables.map(async (tableName) => {
-          // Use type assertion for dynamic table names
           let query = (supabase.from(tableName as any) as any)
             .select("*", { count: 'exact' })
             .order("published_at", { ascending: false })
-            .limit(10); // Get top 10 from each region
+            .limit(PER_REGION_LIMIT);
 
           // Filter by category if not general
           if (selectedCategory !== "general") {
@@ -504,22 +505,23 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         });
 
         const regionResults = await Promise.all(regionPromises);
-
-        // Combine all articles from all regions
-        const allRegionArticles = regionResults.flatMap(result => result.articles);
         totalCount = regionResults.reduce((sum, result) => sum + result.count, 0);
 
-        // Sort combined articles by published_at (newest first)
-        allRegionArticles.sort((a, b) => {
-          const dateA = new Date(a.published_at).getTime();
-          const dateB = new Date(b.published_at).getTime();
-          return dateB - dateA;
-        });
+        // Round-robin interleave by region so every region appears on every page
+        // e.g. page 1: Africa[0], Asia[0], Europe[0], NorthAmerica[0], Oceania[0], SouthAmerica[0], Africa[1], ...
+        const regionArrays = regionResults.map(r => r.articles);
+        const maxLen = Math.max(...regionArrays.map(a => a.length));
+        const interleaved: any[] = [];
+        for (let i = 0; i < maxLen; i++) {
+          for (const arr of regionArrays) {
+            if (arr[i]) interleaved.push(arr[i]);
+          }
+        }
 
-        // Apply pagination to combined results
+        // Apply pagination to interleaved results
         const startIndex = (page - 1) * ARTICLES_PER_PAGE;
         const endIndex = startIndex + ARTICLES_PER_PAGE;
-        newArticles = allRegionArticles.slice(startIndex, endIndex);
+        newArticles = interleaved.slice(startIndex, endIndex);
 
         console.log(`📊 All Regions query: category="${selectedCategory}", found ${totalCount} total articles across all regions, showing ${newArticles.length} on page ${page}`);
       } else {
@@ -861,12 +863,15 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={{ background: 'radial-gradient(ellipse 80% 50% at 20% 10%, hsl(240 60% 96%), transparent), radial-gradient(ellipse 60% 40% at 80% 90%, hsl(270 50% 96%), transparent), hsl(var(--background))' }}>
       {/* Header */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-primary via-[hsl(240_80%_65%)] to-accent text-primary-foreground py-20 px-6">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjA1IiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-20"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-transparent to-accent/20 animate-pulse"></div>
+      <header className="relative overflow-hidden bg-gradient-to-br from-[hsl(235_85%_45%)] via-[hsl(245_75%_55%)] to-[hsl(270_70%_50%)] text-primary-foreground py-10 px-6">
+        {/* Floating orbs */}
+        <div className="absolute -top-16 -left-16 w-80 h-80 bg-blue-400/25 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-20 -right-10 w-96 h-96 bg-purple-500/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.2s' }}></div>
+        <div className="absolute top-8 right-1/4 w-56 h-56 bg-indigo-300/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.6s' }}></div>
+        <div className="absolute bottom-4 left-1/3 w-48 h-48 bg-violet-400/20 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1.8s' }}></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
         <div className="container mx-auto relative z-10">
           {/* Auth Header */}
           <div className="flex justify-between items-center mb-8">
@@ -899,16 +904,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
           {/* Main Header Content */}
           <div className="text-center">
-            <h1 className="text-6xl md:text-7xl font-bold mb-4 tracking-tight animate-fade-in-up" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.2)' }}>
-              Latest Now
-            </h1>
-            <p className="text-xl md:text-2xl opacity-95 font-light animate-fade-in" style={{ animationDelay: '0.1s' }}>
-              Breaking news from around the world
-            </p>
-            <div className="mt-8 flex justify-center">
-              <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce-gentle"></div>
-              <div className="w-2 h-2 bg-white/40 rounded-full animate-bounce-gentle mx-2" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-white/20 rounded-full animate-bounce-gentle" style={{ animationDelay: '0.2s' }}></div>
+            <div className="flex justify-center animate-fade-in-up -mt-1">
+              <img
+                src="/snewweb-logo.png"
+                alt="snewweb.org"
+                className="h-28 md:h-28 w-auto object-contain drop-shadow-lg"
+              />
             </div>
           </div>
         </div>
@@ -1249,6 +1250,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                       sourceCountry={article.source_country}
                       sourceRegion={article.source_region}
                       publishedAt={article.published_at}
+                      imageUrl={article.image_url}
                       articleId={article.id}
                       userId={user?.id}
                       isFavorited={favorites.has(article.id)}

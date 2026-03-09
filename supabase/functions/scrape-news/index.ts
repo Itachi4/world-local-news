@@ -129,10 +129,10 @@ interface RegionConfig {
 // These sources will be displayed first
 // Key can be source name or domain
 const asiaPrioritySources: Record<string, number> = {
-  // Domains - Dawn.com and Times of India get a small boost but don't dominate over Google News
-  'dawn.com': 10,
-  'timesofindia.com': 10,
-  'timesofindia.indiatimes.com': 10,
+  // Domains - priority boosts (Dawn and TOI removed to avoid dominance)
+  // 'dawn.com': 10,                    // Commented out - no longer fetching Dawn directly
+  // 'timesofindia.com': 10,            // Commented out - avoid TOI dominance
+  // 'timesofindia.indiatimes.com': 10, // Commented out - avoid TOI dominance
   'dailyindependent.com.pk': 5,
   'hindustantimes.com': 5,
   'thehindu.com': 5,
@@ -148,10 +148,10 @@ const asiaPrioritySources: Record<string, number> = {
   'koreatimes.co.kr': 5,
   'koreaherald.com': 5,
   // Source names (for RSS feed source tags)
-  'dawn': 10,
-  'times of india': 10,
-  'the times of india': 10,
-  'toi': 10,
+  // 'dawn': 10,           // Commented out - no longer fetching Dawn directly
+  // 'times of india': 10,     // Commented out - avoid TOI dominance
+  // 'the times of india': 10, // Commented out - avoid TOI dominance
+  // 'toi': 10,                // Commented out - avoid TOI dominance
   'hindustan times': 5,
   'the hindu': 5,
   'indian express': 5,
@@ -461,72 +461,63 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
       const categoryLabel = category ? ` [${category}]` : '';
       console.log(`Fetching news from ${country.name} (${region.region})${categoryLabel}...`)
 
-      // Special handling for Pakistan and India: Use direct RSS feeds
       const urls: string[] = [];
 
       if (country.code === 'PK') {
-        // Pakistan: Use Dawn.com RSS feeds + Google News RSS for broader coverage
+        // Pakistan: Use Google News RSS with PK locale and when:4d filter for source variety
         const pkBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
         if (!category || category === 'general') {
-          urls.push('https://www.dawn.com/feeds/');
-          console.log(`🔗 Dawn.com RSS URL [General]: https://www.dawn.com/feeds/`);
           urls.push(`${pkBase}?q=Pakistan+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [General]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [General]: ${urls[urls.length - 1]}`);
         } else if (category === 'tech-ai') {
-          urls.push('https://www.dawn.com/feeds/tech');
-          console.log(`🔗 Dawn.com RSS URL [Tech]: https://www.dawn.com/feeds/tech`);
           urls.push(`${pkBase}?q=Pakistan+Technology+OR+AI+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
-        } else if (category === 'sports-games') {
-          urls.push('https://www.dawn.com/feeds/sport');
-          console.log(`🔗 Dawn.com RSS URL [Sports]: https://www.dawn.com/feeds/sport`);
-          urls.push(`${pkBase}?q=Pakistan+Sports+OR+Gaming+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Sports]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
         } else if (category === 'business-finance') {
-          urls.push('https://www.dawn.com/feeds/business');
-          console.log(`🔗 Dawn.com RSS URL [Business]: https://www.dawn.com/feeds/business`);
           urls.push(`${pkBase}?q=Pakistan+Business+OR+Economy+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Business]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [Business]: ${urls[urls.length - 1]}`);
         } else if (category === 'politics') {
           urls.push(`${pkBase}?q=Pakistan+Politics+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Politics]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [Politics]: ${urls[urls.length - 1]}`);
         } else if (category === 'arts-entertainment-fashion') {
           urls.push(`${pkBase}?q=Pakistan+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
+        } else if (category === 'sports-games') {
+          urls.push(`${pkBase}?q=Pakistan+Sports+OR+Gaming+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
+          console.log(`🔗 Pakistan RSS URL [Sports]: ${urls[urls.length - 1]}`);
         } else if (category === 'travel-leisure') {
           urls.push(`${pkBase}?q=Pakistan+Travel+OR+Leisure+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Travel]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [Travel]: ${urls[urls.length - 1]}`);
         } else if (category === 'religion-spirituality') {
           urls.push(`${pkBase}?q=Pakistan+Religion+OR+Spirituality+when:4d&hl=en-PK&gl=PK&ceid=PK:en`);
-          console.log(`🔗 Pakistan Google News RSS URL [Religion]: ${urls[urls.length - 1]}`);
+          console.log(`🔗 Pakistan RSS URL [Religion]: ${urls[urls.length - 1]}`);
         }
       } else if (country.code === 'IN') {
-        // India: Use Times of India RSS feeds directly
+        // India: Use Google News RSS with IN locale and when:4d filter for source variety
+        const inBase = `${GOOGLE_NEWS_RSS_BASE}/search`;
         if (!category || category === 'general') {
-          // General news from Times of India
-          urls.push('https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms');
-          console.log(`🔗 Times of India RSS URL [General]: https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms`);
-        } else if (category === 'arts-entertainment-fashion') {
-          // Entertainment from Times of India
-          urls.push('https://timesofindia.indiatimes.com/rssfeedsvideo/3812908.cms');
-          console.log(`🔗 Times of India RSS URL [Entertainment]: https://timesofindia.indiatimes.com/rssfeedsvideo/3812908.cms`);
+          urls.push(`${inBase}?q=India+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [General]: ${urls[urls.length - 1]}`);
+        } else if (category === 'tech-ai') {
+          urls.push(`${inBase}?q=India+Technology+OR+AI+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Tech & AI]: ${urls[urls.length - 1]}`);
         } else if (category === 'business-finance') {
-          // Business from Times of India
-          urls.push('https://timesofindia.indiatimes.com/rssfeedsvideo/3813458.cms');
-          console.log(`🔗 Times of India RSS URL [Business]: https://timesofindia.indiatimes.com/rssfeedsvideo/3813458.cms`);
+          urls.push(`${inBase}?q=India+Business+OR+Economy+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Business]: ${urls[urls.length - 1]}`);
+        } else if (category === 'politics') {
+          urls.push(`${inBase}?q=India+Politics+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Politics]: ${urls[urls.length - 1]}`);
+        } else if (category === 'arts-entertainment-fashion') {
+          urls.push(`${inBase}?q=India+Arts+OR+Entertainment+OR+Fashion+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Arts/Entertainment]: ${urls[urls.length - 1]}`);
         } else if (category === 'sports-games') {
-          // Sports from Times of India
-          urls.push('https://timesofindia.indiatimes.com/rssfeedsvideo/3813456.cms');
-          console.log(`🔗 Times of India RSS URL [Sports]: https://timesofindia.indiatimes.com/rssfeedsvideo/3813456.cms`);
-        }
-
-        // For other categories, still use Google News as fallback
-        if (category && category !== 'general' && category !== 'arts-entertainment-fashion' && category !== 'business-finance' && category !== 'sports-games') {
-          const categoryQuery = categoryQueries[category];
-          const queryString = buildGoogleNewsQuery(categoryQuery, country.name);
-          const locale = getLocaleForCountry(country.code);
-          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${queryString}&gl=${country.code}&hl=${locale}&ceid=${country.code}:en`);
-          console.log(`🔗 Google News RSS URL [${category}]: ${urls[urls.length - 1]}`);
+          urls.push(`${inBase}?q=India+Sports+OR+Gaming+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Sports]: ${urls[urls.length - 1]}`);
+        } else if (category === 'travel-leisure') {
+          urls.push(`${inBase}?q=India+Travel+OR+Leisure+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Travel]: ${urls[urls.length - 1]}`);
+        } else if (category === 'religion-spirituality') {
+          urls.push(`${inBase}?q=India+Religion+OR+Spirituality+when:4d&hl=en-IN&gl=IN&ceid=IN:en`);
+          console.log(`🔗 India RSS URL [Religion]: ${urls[urls.length - 1]}`);
         }
       } else if (country.code === 'NP') {
         // Nepal: Use specific Google News RSS URLs with when:4d time filter
@@ -937,18 +928,16 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>');
 
-  // Extract channel title to determine feed type (Dawn.com or Times of India)
+  // Extract channel title to determine feed type
   const channelTitleMatch = xml.match(/<channel>[\s\S]*?<title>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/title>/);
   const channelTitle = channelTitleMatch ? decode((channelTitleMatch[1] ?? channelTitleMatch[2]) || '') : '';
-  const isDawnFeed = channelTitle.toLowerCase().includes('dawn') || xml.includes('dawn.com');
+  // const isDawnFeed = channelTitle.toLowerCase().includes('dawn') || xml.includes('dawn.com'); // Dawn feeds no longer used
+  const isDawnFeed = false; // Dawn.com feeds disabled
   const isTOIFeed = channelTitle.toLowerCase().includes('times of india') || xml.includes('timesofindia.indiatimes.com');
-  const defaultSourceName = isDawnFeed ? 'Dawn' : (isTOIFeed ? 'Times of India' : `News from ${countryName}`);
+  const defaultSourceName = isTOIFeed ? 'Times of India' : `News from ${countryName}`;
 
-  const feedType = isDawnFeed ? 'Dawn.com' : (isTOIFeed ? 'Times of India' : 'Google News/Other');
+  const feedType = isTOIFeed ? 'Times of India' : 'Google News/Other';
   console.log(`📰 RSS Feed type: ${feedType}, Channel: "${channelTitle}"`);
-  if (isDawnFeed) {
-    console.log(`   ✅ Detected Dawn.com feed for ${countryName}`);
-  }
 
   // Parse RSS items - use split approach to handle various tag formats
   // Dawn.com uses <item> tags, but some feeds use <item ...> with attributes or trailing whitespace
@@ -1005,12 +994,7 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     }
     console.log(`📰 Processing article: "${title.substring(0, 50)}..."`);
 
-    if (isDawnFeed && articles.length < 5) {
-      console.log(`   📅 Published: ${itemPublishedAt.toISOString()}`);
-    }
-
     // Extract article URL (supports CDATA or plain text, similar to title)
-    // For Dawn.com RSS feeds, use the direct link
     // For Google News RSS feeds, use the Google News redirect URL
     const linkMatch = itemXml.match(/<link>(?:<!\[CDATA\[(.*?)\]\]>|(.*?))<\/link>/);
     if (!linkMatch || (!linkMatch[1] && !linkMatch[2])) {
@@ -1027,9 +1011,10 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     }
 
     // Check feed type for logging
-    if (url.includes('dawn.com')) {
-      console.log(`🔗 Using Dawn.com direct URL: ${url.substring(0, 100)}...`);
-    } else if (url.includes('timesofindia.indiatimes.com')) {
+    // if (url.includes('dawn.com')) {
+    //   console.log(`🔗 Using Dawn.com direct URL: ${url.substring(0, 100)}...`);
+    // } else
+    if (url.includes('timesofindia.indiatimes.com')) {
       console.log(`🔗 Using Times of India direct URL: ${url.substring(0, 100)}...`);
     } else {
       console.log(`🔗 Using RSS feed URL: ${url.substring(0, 100)}...`);
@@ -1041,14 +1026,23 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     const decodedDesc = decode(rawDesc);
     const snippet = decodedDesc.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
 
+    // Extract thumbnail image URL from description HTML or media tags
+    // Google News RSS embeds <img src="..."> in the description CDATA
+    let imageUrl: string | null = null;
+    const imgMatch = rawDesc.match(/<img[^>]+src=["']([^"']+)["']/i)
+      ?? itemXml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
+      ?? itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/i)
+      ?? itemXml.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image[^"']*["']/i);
+    if (imgMatch) {
+      imageUrl = imgMatch[1];
+    }
+
     // Extract source
     // For Dawn.com feeds, use "Dawn" as source name
     // For Times of India feeds, use "Times of India" as source name
     // For other feeds, try to extract from <source> tag or use default
     let sourceName: string;
-    if (isDawnFeed) {
-      sourceName = 'Dawn';
-    } else if (isTOIFeed) {
+    if (isTOIFeed) {
       sourceName = 'Times of India';
     } else {
       const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
@@ -1060,9 +1054,9 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     const publishedTime = publishedAt.getTime();
 
     // Filter out stale items (older than ~3 days to prioritize recent news)
-    // For Dawn.com and Times of India, use a longer window (14 days) since they're trusted sources
+    // For Times of India, use a longer window (14 days) since it's a trusted source
     // Google News feeds also get a wider window (7 days) to catch up after periods of inactivity
-    const daysAgo = isDawnFeed || isTOIFeed ? 14 : 7;
+    const daysAgo = isTOIFeed ? 14 : 7;
     const cutoffTime = Date.now() - 1000 * 60 * 60 * 24 * daysAgo;
 
     if (isNaN(publishedTime)) {
@@ -1091,11 +1085,11 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     // 1. Detected country matches RSS feed country (default case - most articles)
     // 2. Detected region matches expected region
     // 3. Detected region is "Unknown" (can't determine, so trust RSS feed)
-    // 4. For trusted sources (Dawn.com, Times of India), always trust RSS feed country
+    // 4. For Times of India, always trust RSS feed country
     // Skip articles if:
     // - Detected region is known and doesn't match expected region AND detected country doesn't match RSS feed country
     // - For Google News feeds, be more strict: if detected country is clearly different (not just mentioned), skip it
-    const isTrustedSource = isDawnFeed || isTOIFeed;
+    const isTrustedSource = isTOIFeed; // Dawn feeds disabled; only TOI is trusted source now
 
     // For Google News feeds, check if the detected country is clearly from a different region
     // and the article doesn't seem to be about the RSS feed's country
@@ -1160,14 +1154,10 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       source_region: finalRegion,
       published_at: publishedAt.toISOString(),
       category: articleCategory,
+      image_url: imageUrl,
     };
 
     articles.push(article);
-
-    if (isDawnFeed) {
-      console.log(`   ✅ Dawn.com article ${articles.length}: "${title.substring(0, 60)}..."`);
-      console.log(`      Category: "${articleCategory}", Country: "${finalCountry}", Region: "${finalRegion}", Date: ${publishedAt.toISOString()}`);
-    }
 
     if (isTOIFeed && articles.length <= 3) {
       console.log(`   ✅ Times of India article ${articles.length}: "${title.substring(0, 60)}..."`);
@@ -1179,11 +1169,6 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
   }
 
   console.log(`📊 parseRSSFeed completed: Parsed ${articles.length} articles from ${itemSegments.length} RSS items`);
-  if (isDawnFeed && articles.length === 0 && itemSegments.length > 0) {
-    console.warn(`⚠️ Dawn.com feed had ${itemSegments.length} items but 0 articles were parsed. This might indicate a parsing issue.`);
-    console.log(`   First item preview: ${itemSegments[0]?.substring(0, 300)}...`);
-  }
-
   console.log(`✅ Parsed ${articles.length} total articles from ${countryName} RSS feed`);
   return articles;
 }
@@ -1340,79 +1325,43 @@ Deno.serve(async (req) => {
 
     console.log(`📊 Total unique articles fetched: ${uniqueArticles.length} (removed ${allArticles.length - uniqueArticles.length} duplicates)`);
 
-    // Sort articles: Priority sources first, then by date (newest first)
-    // For Asia region, prioritize trusted sources like Times of India, Hindustan Times, etc.
-    const currentRegion = region || 'all';
+    // Round-robin interleave: group by source_name, sort each group by date,
+    // then pick one article from each source in turn so no single source dominates.
+    // Cap each source at 25% of total articles so the feed stays full but diverse.
+    const sourceGroups = new Map<string, any[]>();
+    for (const article of uniqueArticles) {
+      const key = (article.source_name || 'unknown').toLowerCase().trim();
+      if (!sourceGroups.has(key)) sourceGroups.set(key, []);
+      sourceGroups.get(key)!.push(article);
+    }
 
-    // Add priority scores to articles for sorting
-    const articlesWithPriority = uniqueArticles.map(article => ({
-      ...article,
-      _priority: getSourcePriority(article.source_name, article.source_region, article.url)
-    }));
+    // Sort each source group newest-first, then apply percentage-based cap:
+    // no single source can contribute more than 25% of total articles (min 5)
+    const perSourceCap = Math.max(5, Math.floor(uniqueArticles.length * 0.25));
+    for (const [key, group] of sourceGroups.entries()) {
+      group.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
+      sourceGroups.set(key, group.slice(0, perSourceCap));
+    }
 
-    // Log some sample source names for debugging
-    if (currentRegion === 'Asia' && articlesWithPriority.length > 0) {
-      console.log(`📊 Sample source names from RSS feeds (first 20):`);
-      const sampleSources = [...new Set(articlesWithPriority.slice(0, 20).map(a => ({ name: a.source_name, url: a.url })))];
-      sampleSources.forEach(({ name, url }) => {
-        const priority = getSourcePriority(name, 'Asia', url);
-        const domain = extractDomainFromUrl(url);
-        console.log(`   "${name}" (${domain}) -> priority: ${priority}`);
-      });
-
-      // Show all unique sources with their priorities
-      const allUniqueSources = new Map<string, { name: string; url: string; priority: number }>();
-      articlesWithPriority.forEach(a => {
-        const key = a.source_name.toLowerCase();
-        if (!allUniqueSources.has(key)) {
-          allUniqueSources.set(key, {
-            name: a.source_name,
-            url: a.url,
-            priority: getSourcePriority(a.source_name, 'Asia', a.url)
-          });
+    const groups = Array.from(sourceGroups.values());
+    const cappedTotal = groups.reduce((sum, g) => sum + g.length, 0);
+    const sortedArticles: any[] = [];
+    let roundIdx = 0;
+    while (sortedArticles.length < cappedTotal) {
+      let addedAny = false;
+      for (const group of groups) {
+        if (group[roundIdx]) {
+          sortedArticles.push(group[roundIdx]);
+          addedAny = true;
         }
-      });
-
-      console.log(`📊 All unique sources (${allUniqueSources.size} total):`);
-      Array.from(allUniqueSources.values())
-        .sort((a, b) => b.priority - a.priority)
-        .slice(0, 30)
-        .forEach(({ name, url, priority }) => {
-          const domain = extractDomainFromUrl(url);
-          console.log(`   [Priority ${priority}] "${name}" (${domain})`);
-        });
+      }
+      if (!addedAny) break;
+      roundIdx++;
     }
 
-    // Sort by priority first, then by date
-    articlesWithPriority.sort((a, b) => {
-      // First sort by priority (higher priority first)
-      if (a._priority !== b._priority) {
-        return b._priority - a._priority;
-      }
-
-      // If same priority, sort by date (newest first)
-      const dateA = new Date(a.published_at).getTime();
-      const dateB = new Date(b.published_at).getTime();
-      return dateB - dateA;
-    });
-
-    // Remove the temporary _priority field
-    const sortedArticles = articlesWithPriority.map(({ _priority, ...article }) => article);
-
-    console.log(`📊 Sorted articles: Priority sources first, then by date`);
-    if (currentRegion === 'Asia' && sortedArticles.length > 0) {
-      const priorityCount = sortedArticles.filter(a => getSourcePriority(a.source_name, a.source_region, a.url) > 0).length;
-      console.log(`   ${priorityCount} articles from priority sources for Asia`);
-      if (priorityCount > 0) {
-        const topPriority = sortedArticles.slice(0, Math.min(5, priorityCount));
-        console.log(`   Top priority articles:`);
-        topPriority.forEach((a, i) => {
-          const p = getSourcePriority(a.source_name, a.source_region, a.url);
-          const domain = extractDomainFromUrl(a.url);
-          console.log(`     ${i + 1}. [Priority ${p}] ${a.source_name} (${domain}): "${a.title.substring(0, 50)}..."`);
-        });
-      }
-    }
+    console.log(`📊 Round-robin interleaved ${sortedArticles.length} articles from ${sourceGroups.size} sources (cap: ${perSourceCap}/source = 25% of ${uniqueArticles.length})`);
+    const sourceSummary = Array.from(sourceGroups.entries()).map(([k, v]) => `${k}(${v.length})`).join(', ');
+    console.log(`   Sources: ${sourceSummary}`);
 
     // Use sorted articles
     const articlesToSave = sortedArticles.slice(0, targetLimit);

@@ -6,6 +6,17 @@ import { ExternalLink, Heart, StickyNote } from "lucide-react";
 import { useState } from "react";
 import { PublicNoteModal } from "./PublicNoteModal";
 
+// Left-border accent colour keyed by region
+const regionAccent: Record<string, string> = {
+  Asia:          'border-l-amber-400',
+  Europe:        'border-l-emerald-400',
+  'North America': 'border-l-blue-400',
+  'South America': 'border-l-teal-400',
+  'Middle East': 'border-l-orange-400',
+  Africa:        'border-l-rose-400',
+  Oceania:       'border-l-cyan-400',
+};
+
 // Decode common HTML entities from feeds
 const decodeEntities = (str: string) => {
   if (!str) return "";
@@ -16,7 +27,8 @@ const decodeEntities = (str: string) => {
     .replace(/&apos;|&#x27;/g, "'")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
 };
 
 // Strip any HTML tags and collapse whitespace
@@ -28,8 +40,18 @@ const stripHtml = (str: string) => {
     .trim();
 };
 
+// Truncate at first &nbsp; or U+00A0 — content after that is usually source name/junk
+const truncateAtNbsp = (str: string) => {
+  if (!str) return "";
+  const atLiteral = str.indexOf("&nbsp;");
+  if (atLiteral !== -1) return str.slice(0, atLiteral).trim();
+  const atChar = str.indexOf("\u00A0");
+  if (atChar !== -1) return str.slice(0, atChar).trim();
+  return str;
+};
+
 // Decode and sanitize description/snippet text safely for display
-const cleanSnippet = (str: string) => stripHtml(decodeEntities(str));
+const cleanSnippet = (str: string) => stripHtml(decodeEntities(truncateAtNbsp(str)));
 
 // Prefer canonical article URL over Google News redirect
 const getDisplayUrl = (input: string) => {
@@ -77,6 +99,7 @@ interface ArticleCardProps {
   sourceCountry: string;
   sourceRegion: string;
   publishedAt?: string;
+  imageUrl?: string | null;
   articleId?: string;
   userId?: string;
   isFavorited?: boolean;
@@ -95,6 +118,7 @@ export const ArticleCard = ({
   sourceCountry,
   sourceRegion,
   publishedAt,
+  imageUrl,
   articleId,
   userId,
   isFavorited = false,
@@ -106,12 +130,27 @@ export const ArticleCard = ({
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
   const [selectedNote, setSelectedNote] = useState<{ text: string; userId: string } | null>(null);
-  
+  const [imgError, setImgError] = useState(false);
+
+  const accentBorder = regionAccent[sourceRegion] ?? 'border-l-primary/40';
+
   return (
-    <Card className="group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden animate-fade-in hover-lift">
+    <Card className={`group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden animate-fade-in hover-lift border-l-4 ${accentBorder}`}>
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-      
+
+      {/* Article thumbnail */}
+      {imageUrl && !imgError && (
+        <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden">
+          <img
+            src={imageUrl}
+            alt={title}
+            onError={() => setImgError(true)}
+            className="w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        </a>
+      )}
+
       <CardHeader className="pb-3 relative z-10">
         <div className="flex gap-2 flex-wrap mb-3">
           <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-medium hover:bg-primary/20 transition-colors cursor-default animate-scale-in">
