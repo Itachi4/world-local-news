@@ -857,11 +857,6 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   }, [user]);
 
-  // If no user, don't render the main content
-  if (!user) {
-    return null;
-  }
-
   return (
     <div className="min-h-screen bg-background" style={{ background: 'radial-gradient(ellipse 80% 50% at 20% 10%, hsl(240 60% 96%), transparent), radial-gradient(ellipse 60% 40% at 80% 90%, hsl(270 50% 96%), transparent), hsl(var(--background))' }}>
       {/* Header */}
@@ -1025,6 +1020,16 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           </TabsContent>
 
           <TabsContent value="analysis" className="mt-6">
+            {!user ? (
+              <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50">
+                <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground mb-4">Sign in to create and view analyses.</p>
+                <Button onClick={onLogin} variant="default">
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign In
+                </Button>
+              </div>
+            ) : (
             <div className="flex gap-6 min-h-[600px]">
               <UserSidebar
                 currentUserId={user?.id}
@@ -1167,6 +1172,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                 </div>
               )}
             </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>
@@ -1259,6 +1265,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                       publicNotes={articlePublicNotes}
                       onToggleFavorite={toggleFavorite}
                       onOpenNotes={openNotesModal}
+                      onRequestLogin={onLogin}
                     />
                   </div>
                 );

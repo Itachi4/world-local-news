@@ -108,6 +108,8 @@ interface ArticleCardProps {
   publicNotes?: Array<{ text: string; userId: string }>;
   onToggleFavorite?: (articleId: string) => void;
   onOpenNotes?: (articleId: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
+  /** When set, opening the article (title/image) without being logged in will call this instead of navigating */
+  onRequestLogin?: () => void;
 }
 
 export const ArticleCard = ({
@@ -127,12 +129,21 @@ export const ArticleCard = ({
   publicNotes = [],
   onToggleFavorite,
   onOpenNotes,
+  onRequestLogin,
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
   const [selectedNote, setSelectedNote] = useState<{ text: string; userId: string } | null>(null);
   const [imgError, setImgError] = useState(false);
+  const requireLoginToOpen = onRequestLogin && !userId;
 
   const accentBorder = regionAccent[sourceRegion] ?? 'border-l-primary/40';
+
+  const handleArticleClick = (e: React.MouseEvent) => {
+    if (requireLoginToOpen) {
+      e.preventDefault();
+      onRequestLogin?.();
+    }
+  };
 
   return (
     <Card className={`group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden animate-fade-in hover-lift border-l-4 ${accentBorder}`}>
@@ -141,7 +152,7 @@ export const ArticleCard = ({
 
       {/* Article thumbnail */}
       {imageUrl && !imgError && (
-        <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden">
+        <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden" onClick={handleArticleClick}>
           <img
             src={imageUrl}
             alt={title}
@@ -166,6 +177,7 @@ export const ArticleCard = ({
             target="_blank" 
             rel="noopener noreferrer"
             className="group-hover:text-primary transition-all duration-300 flex items-start gap-2 hover:gap-3 hover:scale-[1.02] transition-bounce"
+            onClick={handleArticleClick}
           >
             <span className="flex-1">{decodeEntities(title)}</span>
             <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12 group-hover:scale-110" />
@@ -272,8 +284,14 @@ export const ArticleCard = ({
             </TooltipProvider>
           </div>
         ) : (
-          <div className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/30">
-            {!userId ? 'Please log in to use favorites and notes' : 'Loading...'}
+          <div className="text-xs mt-3 pt-3 border-t border-border/30">
+            {!userId ? (
+              <button type="button" onClick={onRequestLogin} className="text-muted-foreground hover:text-primary underline">
+                Please log in to use favorites and notes
+              </button>
+            ) : (
+              <span className="text-muted-foreground">Loading...</span>
+            )}
           </div>
         )}
       </CardContent>

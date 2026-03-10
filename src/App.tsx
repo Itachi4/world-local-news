@@ -15,38 +15,54 @@ const queryClient = new QueryClient();
 const App = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showAuth, setShowAuth] = useState(true); // Always show auth by default
+  const [showAuth, setShowAuth] = useState(false); // Don't block browsing; show only when user tries to sign in or do a protected action
   const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
-    // Get initial session
+    let cancelled = false;
+
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setShowAuth(!session?.user); // Only show auth if no user
-      setLoading(false);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!cancelled) {
+          setUser(session?.user ?? null);
+        }
+      } catch (err) {
+        console.warn("Session check failed:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
     getSession();
 
-    // Listen for auth changes
+    // Fallback: stop loading after 2s so the page never stays blank
+    const timeout = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 2000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (cancelled) return;
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setUser(session?.user ?? null);
           setShowAuth(false);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
-          setShowAuth(true);
+          setShowAuth(false);
         } else {
           setUser(session?.user ?? null);
-          setShowAuth(!session?.user);
+          if (!session?.user) setShowAuth(false);
         }
         setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleAuthSuccess = () => {
@@ -57,13 +73,13 @@ const App = () => {
   const handleLogout = () => {
     setUser(null);
     setShowProfile(false);
-    setShowAuth(true); // Show auth modal after logout
+    setShowAuth(false);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -91,9 +107,17 @@ const App = () => {
           {/* Auth Modal */}
           {showAuth && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <button
+                type="button"
+                onClick={() => setShowAuth(false)}
+                className="absolute top-4 right-4 z-[60] w-10 h-10 rounded-full bg-background border shadow-md flex items-center justify-center text-xl text-muted-foreground hover:text-foreground hover:bg-muted"
+                aria-label="Close"
+              >
+                ×
+              </button>
               <Auth 
                 onAuthSuccess={handleAuthSuccess}
-                onBack={() => {}} // Not used anymore
+                onBack={() => {}}
               />
             </div>
           )}
