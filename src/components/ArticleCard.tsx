@@ -2,9 +2,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ExternalLink, Heart, StickyNote } from "lucide-react";
+import { ExternalLink, Heart, StickyNote, Share2, Copy, Send, Linkedin } from "lucide-react";
 import { useState } from "react";
 import { PublicNoteModal } from "./PublicNoteModal";
+import { useToast } from "@/hooks/use-toast";
 
 // Left-border accent colour keyed by region
 const regionAccent: Record<string, string> = {
@@ -91,6 +92,16 @@ const getDisplayUrl = (input: string) => {
   return input;
 };
 
+const isSafeExternalUrl = (input?: string | null) => {
+  if (!input) return false;
+  try {
+    const parsed = new URL(input);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 interface ArticleCardProps {
   title: string;
   snippet: string;
@@ -132,9 +143,11 @@ export const ArticleCard = ({
   onRequestLogin,
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
+  const articleUrl = isSafeExternalUrl(displayUrl) ? displayUrl : isSafeExternalUrl(url) ? url : null;
   const [selectedNote, setSelectedNote] = useState<{ text: string; userId: string } | null>(null);
   const [imgError, setImgError] = useState(false);
   const requireLoginToOpen = onRequestLogin && !userId;
+  const { toast } = useToast();
 
   const accentBorder = regionAccent[sourceRegion] ?? 'border-l-primary/40';
 
@@ -142,7 +155,77 @@ export const ArticleCard = ({
     if (requireLoginToOpen) {
       e.preventDefault();
       onRequestLogin?.();
+      return;
     }
+    if (!articleUrl) {
+      e.preventDefault();
+    }
+  };
+
+  const shareText = `${decodeEntities(title)} (${sourceName})`;
+
+  const openShareWindow = (shareUrl: string) => {
+    window.open(shareUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleNativeShare = async () => {
+    if (!articleUrl) {
+      toast({
+        title: "Sharing unavailable",
+        description: "This article does not have a valid external URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: decodeEntities(title),
+          text: shareText,
+          url: articleUrl,
+        });
+        return;
+      } catch {
+        // User cancelled or browser declined share; silently fall through to copy.
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(articleUrl);
+      toast({
+        title: "Link copied",
+        description: "Article link copied to your clipboard.",
+      });
+    } catch {
+      toast({
+        title: "Sharing unavailable",
+        description: "Unable to copy link from this browser.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSocialShare = (platform: "x" | "linkedin") => {
+    if (!articleUrl) {
+      toast({
+        title: "Sharing unavailable",
+        description: "This article does not have a valid external URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (platform === "x") {
+      openShareWindow(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(articleUrl)}`
+      );
+      return;
+    }
+
+    openShareWindow(
+      `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
+    );
   };
 
   return (
@@ -152,12 +235,21 @@ export const ArticleCard = ({
 
       {/* Article thumbnail */}
       {imageUrl && !imgError && (
-        <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden" onClick={handleArticleClick}>
+        <a
+          href={articleUrl || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block overflow-hidden"
+          onClick={handleArticleClick}
+          aria-label={`Open article image: ${decodeEntities(title)}`}
+        >
           <img
             src={imageUrl}
             alt={title}
             onError={() => setImgError(true)}
             className="w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+            decoding="async"
           />
         </a>
       )}
@@ -173,11 +265,12 @@ export const ArticleCard = ({
         </div>
         <CardTitle className="text-lg leading-tight font-bold">
           <a 
-            href={displayUrl} 
+            href={articleUrl || "#"} 
             target="_blank" 
             rel="noopener noreferrer"
             className="group-hover:text-primary transition-all duration-300 flex items-start gap-2 hover:gap-3 hover:scale-[1.02] transition-bounce"
             onClick={handleArticleClick}
+            aria-label={`Open article source: ${decodeEntities(title)}`}
           >
             <span className="flex-1">{decodeEntities(title)}</span>
             <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12 group-hover:scale-110" />
@@ -212,19 +305,22 @@ export const ArticleCard = ({
                 const displayText = isLongNote ? note.text.substring(0, 100) + "..." : note.text;
                 
                 return (
-                  <div 
-                    key={idx} 
-                    className={`text-xs bg-muted/50 p-2 rounded border-l-2 border-primary/30 ${
-                      isLongNote ? 'cursor-pointer hover:bg-muted transition-colors' : ''
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`w-full text-left text-xs bg-muted/50 p-2 rounded border-l-2 border-primary/30 ${
+                      isLongNote ? "cursor-pointer hover:bg-muted transition-colors" : "cursor-default"
                     }`}
                     onClick={() => isLongNote && setSelectedNote(note)}
                     title={isLongNote ? "Click to view full note" : undefined}
+                    aria-label={isLongNote ? "Open full public note" : "Public note"}
+                    disabled={!isLongNote}
                   >
                     <p className="text-foreground/80">{displayText}</p>
                     {isLongNote && (
                       <p className="text-xs text-primary mt-1 font-medium">Click to read more...</p>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -232,66 +328,162 @@ export const ArticleCard = ({
         )}
         
         {/* Action Buttons */}
-        {userId && articleId ? (
-          <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-border/30">
-            <TooltipProvider>
-              {/* Favorite Button */}
+        {articleId && (
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <div className="flex items-center justify-end gap-2">
+              <TooltipProvider>
+              {/* Share Buttons */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => onToggleFavorite?.(articleId)}
-                    className={`h-8 w-8 p-0 hover:bg-red-50 hover:text-red-500 transition-all duration-200 ${
-                      isFavorited 
-                        ? 'text-red-500 hover:text-red-600' 
-                        : 'text-muted-foreground hover:text-red-500'
-                    }`}
+                    onClick={handleNativeShare}
+                    className="h-10 w-10 p-0 hover:bg-emerald-50 hover:text-emerald-600 transition-all duration-200 text-muted-foreground"
+                    aria-label="Share article"
                   >
-                    <Heart 
-                      className={`w-4 h-4 transition-all duration-200 ${
-                        isFavorited 
-                          ? 'fill-current scale-110' 
-                          : 'hover:scale-110'
-                      }`} 
-                    />
+                    <Share2 className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}</p>
+                  <p>Share or copy link</p>
                 </TooltipContent>
               </Tooltip>
 
-              {/* Notes Button */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                        onClick={() => onOpenNotes?.(articleId, title, noteText, noteIsPublic)}
-                    className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-500 transition-all duration-200 text-muted-foreground hover:text-blue-500 relative"
+                    onClick={() => handleSocialShare("x")}
+                    className="h-10 w-10 p-0 hover:bg-sky-50 hover:text-sky-600 transition-all duration-200 text-muted-foreground"
+                    aria-label="Share to X"
                   >
-                    <StickyNote className="w-4 h-4 hover:scale-110 transition-transform duration-200" />
-                    {noteText && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                    )}
+                    <Send className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{noteText ? 'Edit Note' : 'Add Note'}</p>
+                  <p>Share to X</p>
                 </TooltipContent>
               </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleSocialShare("linkedin")}
+                    className="h-10 w-10 p-0 hover:bg-blue-50 hover:text-blue-700 transition-all duration-200 text-muted-foreground"
+                    aria-label="Share to LinkedIn"
+                  >
+                    <Linkedin className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Share to LinkedIn</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      if (!articleUrl) {
+                        toast({
+                          title: "Copy unavailable",
+                          description: "This article does not have a valid external URL.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      try {
+                        await navigator.clipboard.writeText(articleUrl);
+                        toast({
+                          title: "Copied",
+                          description: "Article URL copied to clipboard.",
+                        });
+                      } catch {
+                        toast({
+                          title: "Copy unavailable",
+                          description: "Could not copy the article URL.",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    className="h-10 w-10 p-0 hover:bg-slate-100 hover:text-slate-800 transition-all duration-200 text-muted-foreground"
+                    aria-label="Copy article link"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Copy link</p>
+                </TooltipContent>
+              </Tooltip>
+
+              {userId && (
+                <>
+                  {/* Favorite Button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onToggleFavorite?.(articleId)}
+                        className={`h-10 w-10 p-0 hover:bg-red-50 hover:text-red-500 transition-all duration-200 ${
+                          isFavorited
+                            ? "text-red-500 hover:text-red-600"
+                            : "text-muted-foreground hover:text-red-500"
+                        }`}
+                        aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                      >
+                        <Heart
+                          className={`w-4 h-4 transition-all duration-200 ${
+                            isFavorited
+                              ? "fill-current scale-110"
+                              : "hover:scale-110"
+                          }`}
+                        />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isFavorited ? "Remove from Favorites" : "Add to Favorites"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+
+                  {/* Notes Button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onOpenNotes?.(articleId, title, noteText, noteIsPublic)}
+                        className="h-10 w-10 p-0 hover:bg-blue-50 hover:text-blue-500 transition-all duration-200 text-muted-foreground hover:text-blue-500 relative"
+                        aria-label={noteText ? "Edit note" : "Add note"}
+                      >
+                        <StickyNote className="w-4 h-4 hover:scale-110 transition-transform duration-200" />
+                        {noteText && (
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{noteText ? "Edit Note" : "Add Note"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              )}
             </TooltipProvider>
           </div>
-        ) : (
-          <div className="text-xs mt-3 pt-3 border-t border-border/30">
-            {!userId ? (
+          {!userId && (
+            <div className="text-xs mt-2">
               <button type="button" onClick={onRequestLogin} className="text-muted-foreground hover:text-primary underline">
                 Please log in to use favorites and notes
               </button>
-            ) : (
-              <span className="text-muted-foreground">Loading...</span>
-            )}
+            </div>
+          )}
           </div>
         )}
       </CardContent>

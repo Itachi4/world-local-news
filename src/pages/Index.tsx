@@ -1,17 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ArticleCard } from "@/components/ArticleCard";
 import ArticleNotesModal from "@/components/ArticleNotesModal";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, RefreshCw, User, LogIn, Globe, Heart, StickyNote, FileText, Video, Cpu, DollarSign, Building2, Palette, Trophy, Plane, Church } from "lucide-react";
+import { Search, RefreshCw, User, LogIn, Globe, Heart, FileText, Video, Cpu, DollarSign, Building2, Palette, Trophy, Plane, Church, X, MailCheck, Type } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AnalysisEditor } from "@/components/AnalysisEditor";
 import { UserSidebar } from "@/components/UserSidebar";
 import { UserContentViewer } from "@/components/UserContentViewer";
+import { Link } from "react-router-dom";
 
 const regions = [
   { value: "all", label: "All Regions" },
@@ -112,6 +114,8 @@ const categories = [
   { value: "religion-spirituality", label: "Religion & Spirituality", icon: Church },
 ];
 
+const FONT_SCALE_STEPS = [90, 100, 112];
+
 interface IndexProps {
   user: any;
   onLogin: () => void;
@@ -134,6 +138,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [notes, setNotes] = useState<Map<string, { text: string; isPublic: boolean; userId?: string }>>(new Map());
   const [publicNotes, setPublicNotes] = useState<Map<string, Array<{ text: string; userId: string }>>>(new Map());
   const [analyses, setAnalyses] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [fontScale, setFontScale] = useState(100);
+  const [digestEmail, setDigestEmail] = useState("");
+  const [digestFrequency, setDigestFrequency] = useState<"daily" | "weekly">("daily");
+  const [digestCategories, setDigestCategories] = useState<string[]>(["general"]);
+  const [subscribingDigest, setSubscribingDigest] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState<string>("");
   const [editingAnalysis, setEditingAnalysis] = useState<any | null>(null);
@@ -150,6 +160,30 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   });
   const ARTICLES_PER_PAGE = 10;
   const { toast } = useToast();
+
+  const getCategoryLabel = (value: string) =>
+    categories.find((category) => category.value === value)?.label || value;
+
+  const getLocalDigestSubscriptions = () => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem("digest_subscriptions");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  type DigestSubscription = {
+    email: string;
+    user_id: string | null;
+    frequency: "daily" | "weekly";
+    categories: string[];
+    is_active: boolean;
+    updated_at: string;
+    created_at?: string;
+  };
 
   // Fetch user favorites
   const fetchFavorites = async () => {
@@ -285,11 +319,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           description: "Article added to your favorites",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error toggling favorite:", error);
+      const errorMessage = error?.message || "Failed to update favorites";
       toast({
         title: "Error",
-        description: "Failed to update favorites",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -800,10 +835,54 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   };
 
-  // Filter articles based on active tab
-  const filteredArticles = activeTab === "favorites"
-    ? articles.filter(article => favorites.has(article.id))
-    : articles;
+  const allTabArticles = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return articles;
+    }
+
+    return articles.filter((article) => {
+      const haystack = [
+        article.title,
+        article.snippet,
+        article.source_name,
+        article.source_country,
+        article.source_region,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [articles, searchQuery]);
+
+  const favoriteArticles = useMemo(
+    () => articles.filter((article) => favorites.has(article.id)),
+    [articles, favorites]
+  );
+
+  const favoriteTabArticles = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return favoriteArticles;
+    }
+
+    return favoriteArticles.filter((article) => {
+      const haystack = [
+        article.title,
+        article.snippet,
+        article.source_name,
+        article.source_country,
+        article.source_region,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [favoriteArticles, searchQuery]);
+
+  const activeTabArticles = activeTab === "favorites" ? favoriteTabArticles : allTabArticles;
 
   // Reset country when region changes
   useEffect(() => {
@@ -854,13 +933,98 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       fetchFavorites();
       fetchNotes();
       fetchAnalyses();
+      if (user.email) {
+        setDigestEmail((prev) => prev || user.email);
+      }
     }
   }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedFontScale = Number(window.localStorage.getItem("preferred_font_scale") || "100");
+    if (FONT_SCALE_STEPS.includes(savedFontScale)) {
+      setFontScale(savedFontScale);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.fontSize = `${fontScale}%`;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("preferred_font_scale", String(fontScale));
+    }
+  }, [fontScale]);
+
+  const toggleDigestCategory = (categoryValue: string) => {
+    setDigestCategories((prev) => {
+      if (prev.includes(categoryValue)) {
+        const next = prev.filter((value) => value !== categoryValue);
+        return next.length > 0 ? next : prev;
+      }
+      return [...prev, categoryValue];
+    });
+  };
+
+  const subscribeToDigest = async () => {
+    const normalizedEmail = digestEmail.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubscribingDigest(true);
+
+    const payload = {
+      email: normalizedEmail,
+      user_id: user?.id ?? null,
+      frequency: digestFrequency,
+      categories: digestCategories,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { error } = await (supabase.from("digest_subscriptions" as any) as any).upsert(payload, {
+        onConflict: "email",
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Digest subscription updated",
+        description: `You will receive ${digestFrequency} alerts for ${digestCategories.map(getCategoryLabel).join(", ")}.`,
+      });
+    } catch (error) {
+      const localSubs = getLocalDigestSubscriptions() as DigestSubscription[];
+      const existingIndex = localSubs.findIndex((entry) => entry.email === normalizedEmail);
+
+      if (existingIndex >= 0) {
+        localSubs[existingIndex] = { ...localSubs[existingIndex], ...payload };
+      } else {
+        localSubs.push({ ...payload, created_at: new Date().toISOString() });
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("digest_subscriptions", JSON.stringify(localSubs));
+      }
+
+      toast({
+        title: "Subscription saved",
+        description: "Saved locally for now. Run the new migration to store digest subscriptions in Supabase.",
+      });
+    } finally {
+      setSubscribingDigest(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background" style={{ background: 'radial-gradient(ellipse 80% 50% at 20% 10%, hsl(240 60% 96%), transparent), radial-gradient(ellipse 60% 40% at 80% 90%, hsl(270 50% 96%), transparent), hsl(var(--background))' }}>
       {/* Header */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-[hsl(235_85%_45%)] via-[hsl(245_75%_55%)] to-[hsl(270_70%_50%)] text-primary-foreground py-10 px-6">
+      <header className="relative overflow-hidden bg-gradient-to-br from-[hsl(235_85%_45%)] via-[hsl(245_75%_55%)] to-[hsl(270_70%_50%)] text-primary-foreground py-6 px-6">
         {/* Floating orbs */}
         <div className="absolute -top-16 -left-16 w-80 h-80 bg-blue-400/25 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute -bottom-20 -right-10 w-96 h-96 bg-purple-500/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.2s' }}></div>
@@ -869,11 +1033,28 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
         <div className="container mx-auto relative z-10">
           {/* Auth Header */}
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-6 gap-4">
             <div className="flex items-center gap-2">
               <Globe className="w-6 h-6 text-blue-400" />
               <span className="text-sm font-medium">Free Global News Service</span>
             </div>
+            <nav aria-label="Primary navigation" className="hidden md:flex items-center gap-2">
+              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
+                <Link to="/">Home</Link>
+              </Button>
+              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
+                <Link to="/about">About</Link>
+              </Button>
+              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
+                <Link to="/contact">Contact</Link>
+              </Button>
+              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
+                <Link to="/privacy">Privacy</Link>
+              </Button>
+              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
+                <Link to="/terms">Terms</Link>
+              </Button>
+            </nav>
             <div className="flex items-center gap-3">
               {user ? (
                 <Button
@@ -903,8 +1084,12 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               <img
                 src="/snewweb-logo.png"
                 alt="snewweb.org"
-                className="h-28 md:h-28 w-auto object-contain drop-shadow-lg"
+                className="h-20 md:h-24 w-auto object-contain drop-shadow-lg"
+                decoding="async"
               />
+            </div>
+            <div className="mt-4 text-sm text-blue-100/90">
+              <span className="font-medium">Home</span> / {categories.find(c => c.value === selectedCategory)?.label || "General"}
             </div>
           </div>
         </div>
@@ -925,8 +1110,9 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                     onClick={() => {
                       setSelectedCategory(category.value);
                     }}
-                    className="flex items-center gap-2 h-10"
+                    className="flex items-center gap-2 h-11"
                     disabled={scraping}
+                    aria-pressed={selectedCategory === category.value}
                   >
                     <Icon className="w-4 h-4" />
                     {category.label}
@@ -937,6 +1123,42 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
             {/* Region Selector and Fetch Button */}
             <div className="flex gap-3 items-center flex-wrap">
+              <div className="flex items-center gap-1 rounded-md border bg-background/80 p-1">
+                <Type className="w-4 h-4 text-muted-foreground mx-1" />
+                {FONT_SCALE_STEPS.map((scale) => (
+                  <Button
+                    key={scale}
+                    type="button"
+                    variant={fontScale === scale ? "default" : "ghost"}
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => setFontScale(scale)}
+                    aria-label={`Set font size to ${scale}%`}
+                  >
+                    {scale === 90 ? "A-" : scale === 100 ? "A" : "A+"}
+                  </Button>
+                ))}
+              </div>
+              <div className="relative w-full sm:w-[280px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search headlines, sources, countries..."
+                  className="pl-9 pr-9 h-11"
+                  aria-label="Search articles"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <Select value={selectedRegion} onValueChange={setSelectedRegion}>
                 <SelectTrigger className="w-[180px] h-11 border-border/50 hover:border-primary/50 transition-colors">
                   <SelectValue placeholder="Select region" />
@@ -989,7 +1211,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
             <p className="text-sm font-medium text-muted-foreground">
-              {filteredArticles.length} of {totalArticles} {totalArticles === 1 ? 'article' : 'articles'}
+              {activeTabArticles.length} shown
+              {searchQuery ? ` for "${searchQuery}"` : ` of ${totalArticles}`} {totalArticles === 1 ? "article" : "articles"}
             </p>
           </div>
         </div>
@@ -1012,11 +1235,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           </TabsList>
 
           <TabsContent value="all" className="mt-6">
-            {renderArticles(articles)}
+            {renderArticles(allTabArticles)}
           </TabsContent>
 
           <TabsContent value="favorites" className="mt-6">
-            {renderArticles(filteredArticles)}
+            {renderArticles(favoriteTabArticles)}
           </TabsContent>
 
           <TabsContent value="analysis" className="mt-6">
@@ -1175,6 +1398,52 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
             )}
           </TabsContent>
         </Tabs>
+
+        <section className="mt-10 rounded-xl border bg-card/70 p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <MailCheck className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-semibold">Email alerts & digest subscription</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Get daily or weekly summaries for your selected categories.
+          </p>
+          <div className="flex flex-col md:flex-row gap-3 mb-3">
+            <Input
+              value={digestEmail}
+              onChange={(e) => setDigestEmail(e.target.value)}
+              placeholder="your@email.com"
+              type="email"
+              className="h-11 md:max-w-sm"
+              aria-label="Digest email address"
+            />
+            <Select value={digestFrequency} onValueChange={(value: "daily" | "weekly") => setDigestFrequency(value)}>
+              <SelectTrigger className="h-11 md:w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily digest</SelectItem>
+                <SelectItem value="weekly">Weekly digest</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="button" onClick={subscribeToDigest} disabled={subscribingDigest} className="h-11 md:w-auto">
+              {subscribingDigest ? "Saving..." : "Subscribe"}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <Button
+                key={`digest-${category.value}`}
+                type="button"
+                variant={digestCategories.includes(category.value) ? "default" : "outline"}
+                size="sm"
+                onClick={() => toggleDigestCategory(category.value)}
+                aria-pressed={digestCategories.includes(category.value)}
+              >
+                {category.label}
+              </Button>
+            ))}
+          </div>
+        </section>
       </main>
 
       {/* Notes Dropdown */}
@@ -1187,6 +1456,18 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         initialIsPublic={notesModal.noteIsPublic}
         articleTitle={notesModal.title}
       />
+
+      <footer className="border-t border-border/60 bg-card/60 backdrop-blur-sm mt-16">
+        <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} snewweb.org - Global news insights.</p>
+          <nav aria-label="Footer links" className="flex flex-wrap items-center gap-3 text-sm">
+            <Link to="/about" className="text-muted-foreground hover:text-foreground">About</Link>
+            <Link to="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link>
+            <Link to="/privacy" className="text-muted-foreground hover:text-foreground">Privacy Policy</Link>
+            <Link to="/terms" className="text-muted-foreground hover:text-foreground">Terms</Link>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 
