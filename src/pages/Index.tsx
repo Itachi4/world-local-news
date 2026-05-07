@@ -5,6 +5,7 @@ import ArticleNotesModal from "@/components/ArticleNotesModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,82 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { AnalysisEditor } from "@/components/AnalysisEditor";
 import { UserSidebar } from "@/components/UserSidebar";
 import { UserContentViewer } from "@/components/UserContentViewer";
+import InteractiveGlobeView from "@/components/InteractiveGlobeView";
+import { COUNTRIES_BY_REGION, REGION_OPTIONS } from "@/lib/countryMap";
 import { Link } from "react-router-dom";
-
-const regions = [
-  { value: "all", label: "All Regions" },
-  { value: "Africa", label: "Africa" },
-  { value: "Asia", label: "Asia" },
-  { value: "Europe", label: "Europe" },
-  { value: "North America", label: "North America" },
-  { value: "Oceania", label: "Oceania" },
-  { value: "South America", label: "South America" },
-];
-
-const countriesByRegion: Record<string, { code: string; name: string }[]> = {
-  Africa: [
-    { code: "ZA", name: "South Africa" },
-    { code: "NG", name: "Nigeria" },
-    { code: "EG", name: "Egypt" },
-    { code: "KE", name: "Kenya" },
-    { code: "GH", name: "Ghana" },
-    { code: "MA", name: "Morocco" },
-    { code: "ET", name: "Ethiopia" },
-    { code: "TZ", name: "Tanzania" },
-  ],
-  Asia: [
-    { code: "IN", name: "India" },
-    { code: "CN", name: "China" },
-    { code: "JP", name: "Japan" },
-    { code: "SG", name: "Singapore" },
-    { code: "SA", name: "Saudi Arabia" },
-    { code: "KR", name: "South Korea" },
-    { code: "PK", name: "Pakistan" },
-    { code: "NP", name: "Nepal" },
-    { code: "IR", name: "Iran" },
-    { code: "SY", name: "Syria" },
-    { code: "BD", name: "Bangladesh" },
-    { code: "IL", name: "Israel" },
-    { code: "LK", name: "Sri Lanka" },
-    { code: "AF", name: "Afghanistan" },
-    { code: "QA", name: "Qatar" },
-    { code: "JO", name: "Jordan" },
-    { code: "OM", name: "Oman" },
-    { code: "YE", name: "Yemen" },
-    { code: "AE", name: "United Arab Emirates" },
-  ],
-  Europe: [
-    { code: "GB", name: "United Kingdom" },
-    { code: "FR", name: "France" },
-    { code: "DE", name: "Germany" },
-    { code: "IT", name: "Italy" },
-    { code: "ES", name: "Spain" },
-    { code: "NL", name: "Netherlands" },
-    { code: "SE", name: "Sweden" },
-    { code: "PL", name: "Poland" },
-  ],
-  "North America": [
-    { code: "US", name: "United States" },
-    { code: "CA", name: "Canada" },
-    { code: "MX", name: "Mexico" },
-  ],
-  Oceania: [
-    { code: "AU", name: "Australia" },
-    { code: "NZ", name: "New Zealand" },
-    { code: "FJ", name: "Fiji" },
-    { code: "PG", name: "Papua New Guinea" },
-  ],
-  "South America": [
-    { code: "BR", name: "Brazil" },
-    { code: "AR", name: "Argentina" },
-    { code: "CO", name: "Colombia" },
-    { code: "CL", name: "Chile" },
-    { code: "PE", name: "Peru" },
-    { code: "VE", name: "Venezuela" },
-    { code: "EC", name: "Ecuador" },
-    { code: "UY", name: "Uruguay" },
-  ],
-};
 
 // Helper function to get table name for a region
 function getTableNameForRegion(region: string): string | null {
@@ -134,6 +62,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalArticles, setTotalArticles] = useState(0);
   const [activeTab, setActiveTab] = useState<"all" | "favorites" | "analysis">("all");
+  const [viewMode, setViewMode] = useState<"cards" | "globe">("cards");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Map<string, { text: string; isPublic: boolean; userId?: string }>>(new Map());
   const [publicNotes, setPublicNotes] = useState<Map<string, Array<{ text: string; userId: string }>>>(new Map());
@@ -883,11 +812,27 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   }, [favoriteArticles, searchQuery]);
 
   const activeTabArticles = activeTab === "favorites" ? favoriteTabArticles : allTabArticles;
+  const displayedArticles = viewMode === "globe" ? allTabArticles : activeTabArticles;
 
-  // Reset country when region changes
+  // Keep selected country valid for the current region.
   useEffect(() => {
-    setSelectedCountry("all");
-  }, [selectedRegion]);
+    if (selectedRegion === "all") return;
+
+    const regionCountries = COUNTRIES_BY_REGION[selectedRegion] || [];
+    const existsInRegion = selectedCountry === "all"
+      || regionCountries.some((country) => country.code === selectedCountry);
+    if (!existsInRegion) {
+      setSelectedCountry("all");
+    }
+  }, [selectedRegion, selectedCountry]);
+
+  useEffect(() => {
+    if (viewMode === "globe") {
+      setActiveTab("all");
+      setSelectedRegion("all");
+      setSelectedCountry("all");
+    }
+  }, [viewMode]);
 
   // Auto-fetch articles when category, region, or country changes
   useEffect(() => {
@@ -1021,6 +966,45 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   };
 
+  const handleGlobeCountrySelect = (countryCode: string, explicitRegion?: string) => {
+    if (countryCode === "all") {
+      setSelectedCountry("all");
+      setCurrentPage(1);
+      setHasMore(true);
+      return;
+    }
+
+    const normalized = countryCode.toUpperCase();
+    // Keep globe mode global; filter by country only so all hotspots remain visible.
+    setSelectedRegion("all");
+    setSelectedCountry(normalized);
+    setCurrentPage(1);
+    setHasMore(true);
+  };
+
+  if (viewMode === "globe") {
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-black">
+        <div className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/30 bg-black/60 px-3 py-2 backdrop-blur-sm">
+          <span className="text-xs font-medium text-white">Interactive View</span>
+          <Switch
+            checked
+            onCheckedChange={(checked) => setViewMode(checked ? "globe" : "cards")}
+            aria-label="Toggle interactive globe mode"
+          />
+        </div>
+        <InteractiveGlobeView
+          selectedRegion={selectedRegion}
+          selectedCountry={selectedCountry}
+          articles={allTabArticles}
+          loading={loading || scraping}
+          onSelectCountry={handleGlobeCountrySelect}
+          fullscreen
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background" style={{ background: 'radial-gradient(ellipse 80% 50% at 20% 10%, hsl(240 60% 96%), transparent), radial-gradient(ellipse 60% 40% at 80% 90%, hsl(270 50% 96%), transparent), hsl(var(--background))' }}>
       {/* Header */}
@@ -1056,6 +1040,14 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               </Button>
             </nav>
             <div className="flex items-center gap-3">
+              <div className="hidden md:flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1.5">
+                <span className="text-xs font-medium text-white/90">Interactive View</span>
+                <Switch
+                  checked={false}
+                  onCheckedChange={(checked) => setViewMode(checked ? "globe" : "cards")}
+                  aria-label="Toggle interactive globe view"
+                />
+              </div>
               {user ? (
                 <Button
                   variant="outline"
@@ -1123,6 +1115,14 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
             {/* Region Selector and Fetch Button */}
             <div className="flex gap-3 items-center flex-wrap">
+              <div className="flex items-center gap-2 rounded-md border bg-background/80 px-3 py-2">
+                <span className="text-xs font-medium text-muted-foreground">Interactive View</span>
+                <Switch
+                  checked={false}
+                  onCheckedChange={(checked) => setViewMode(checked ? "globe" : "cards")}
+                  aria-label="Toggle interactive globe mode"
+                />
+              </div>
               <div className="flex items-center gap-1 rounded-md border bg-background/80 p-1">
                 <Type className="w-4 h-4 text-muted-foreground mx-1" />
                 {FONT_SCALE_STEPS.map((scale) => (
@@ -1164,7 +1164,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
                   <SelectValue placeholder="Select region" />
                 </SelectTrigger>
                 <SelectContent>
-                  {regions.map((region) => (
+                  {REGION_OPTIONS.map((region) => (
                     <SelectItem key={region.value} value={region.value}>
                       {region.label}
                     </SelectItem>
@@ -1173,14 +1173,14 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               </Select>
 
               {/* Country selector — visible only when a specific region is selected */}
-              {selectedRegion !== "all" && countriesByRegion[selectedRegion] && (
+              {selectedRegion !== "all" && COUNTRIES_BY_REGION[selectedRegion] && (
                 <Select value={selectedCountry} onValueChange={setSelectedCountry}>
                   <SelectTrigger className="w-[200px] h-11 border-border/50 hover:border-primary/50 transition-colors">
                     <SelectValue placeholder="All Countries" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Countries</SelectItem>
-                    {countriesByRegion[selectedRegion].map((c) => (
+                    {COUNTRIES_BY_REGION[selectedRegion].map((c) => (
                       <SelectItem key={c.code} value={c.code}>
                         {c.name}
                       </SelectItem>
@@ -1211,49 +1211,50 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
             <p className="text-sm font-medium text-muted-foreground">
-              {activeTabArticles.length} shown
+              {displayedArticles.length} shown
               {searchQuery ? ` for "${searchQuery}"` : ` of ${totalArticles}`} {totalArticles === 1 ? "article" : "articles"}
             </p>
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "all" | "favorites" | "analysis")} className="mb-8">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
-            <TabsTrigger value="all" className="flex items-center gap-2">
-              <Globe className="w-4 h-4" />
-              All Articles
-            </TabsTrigger>
-            <TabsTrigger value="favorites" className="flex items-center gap-2">
-              <Heart className="w-4 h-4" />
-              Favorites ({favorites.size})
-            </TabsTrigger>
-            <TabsTrigger value="analysis" className="flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Analysis
-            </TabsTrigger>
-          </TabsList>
+        <>
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "all" | "favorites" | "analysis")} className="mb-8">
+              <TabsList className="grid w-full max-w-md grid-cols-3">
+                <TabsTrigger value="all" className="flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  All Articles
+                </TabsTrigger>
+                <TabsTrigger value="favorites" className="flex items-center gap-2">
+                  <Heart className="w-4 h-4" />
+                  Favorites ({favorites.size})
+                </TabsTrigger>
+                <TabsTrigger value="analysis" className="flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Analysis
+                </TabsTrigger>
+              </TabsList>
 
-          <TabsContent value="all" className="mt-6">
-            {renderArticles(allTabArticles)}
-          </TabsContent>
+              <TabsContent value="all" className="mt-6">
+                {renderArticles(allTabArticles)}
+              </TabsContent>
 
-          <TabsContent value="favorites" className="mt-6">
-            {renderArticles(favoriteTabArticles)}
-          </TabsContent>
+              <TabsContent value="favorites" className="mt-6">
+                {renderArticles(favoriteTabArticles)}
+              </TabsContent>
 
-          <TabsContent value="analysis" className="mt-6">
-            {!user ? (
-              <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50">
-                <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="text-muted-foreground mb-4">Sign in to create and view analyses.</p>
-                <Button onClick={onLogin} variant="default">
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Sign In
-                </Button>
-              </div>
-            ) : (
-            <div className="flex gap-6 min-h-[600px]">
+              <TabsContent value="analysis" className="mt-6">
+                {!user ? (
+                  <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50">
+                    <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                    <p className="text-muted-foreground mb-4">Sign in to create and view analyses.</p>
+                    <Button onClick={onLogin} variant="default">
+                      <LogIn className="w-4 h-4 mr-2" />
+                      Sign In
+                    </Button>
+                  </div>
+                ) : (
+                <div className="flex gap-6 min-h-[600px]">
               <UserSidebar
                 currentUserId={user?.id}
                 onSelectUser={(userId, userName) => {
@@ -1396,8 +1397,9 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               )}
             </div>
             )}
-          </TabsContent>
-        </Tabs>
+              </TabsContent>
+            </Tabs>
+        </>
 
         <section className="mt-10 rounded-xl border bg-card/70 p-5">
           <div className="flex items-center gap-2 mb-2">
