@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import nodemailer from 'npm:nodemailer';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -90,6 +91,19 @@ const categoryQueries: Record<string, string> = {
   "religion-spirituality": "religion OR spirituality OR faith OR religious OR church OR temple",
 };
 
+type AlertMetrics = {
+  totalArticlesFetched: number;
+  enrichmentCandidates: number;
+  decodeAttempts: number;
+  decodeSuccesses: number;
+  decodeFailures: number;
+  metadataFetchAttempts: number;
+  metadataFetchSuccesses: number;
+  metadataFetchFailures: number;
+  imagesResolvedFromEnrichment: number;
+  decodeFailureSamples: Array<{ url: string; reason: string }>;
+};
+
 // Helper: simple fetch with retry for transient errors like 429/503
 async function fetchWithRetry(url: string, init: RequestInit = {}, retries = 3, backoffMs = 1000): Promise<Response> {
   let lastErr: any
@@ -115,6 +129,498 @@ async function fetchWithRetry(url: string, init: RequestInit = {}, retries = 3, 
     }
   }
   throw lastErr ?? new Error('Failed to fetch after retries')
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function normalizeEscapedUrl(input: string): string {
+  return input
+    .replace(/\\u003d/g, "=")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\\//g, "/")
+    .trim();
+}
+
+async function getGoogleDecodeParams(articleId: string): Promise<{ signature: string; timestamp: string } | null> {
+  const candidates = [
+    `https://news.google.com/articles/${articleId}`,
+    `https://news.google.com/rss/articles/${articleId}`,
+  ];
+
+  for (const url of candidates) {
+    try {
+      const response = await fetchWithTimeout(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Cache-Control': 'no-cache',
+        },
+      }, 2500);
+
+      if (!response.ok) continue;
+      const html = await response.text();
+      const signature = html.match(/data-n-a-sg="([^"]+)"/)?.[1];
+      const timestamp = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
+      if (signature && timestamp) {
+        return { signature, timestamp };
+      }
+    } catch {
+      // Try next candidate URL.
+    }
+  }
+  return null;
+}
+
+function parseDecodedUrlFromBatchExecute(text: string): string | null {
+  try {
+    const parts = text.split('\n\n');
+    const payload = parts.length > 1 ? parts[1] : '';
+    if (!payload) return null;
+    const parsedOuter = JSON.parse(payload);
+    if (!Array.isArray(parsedOuter) || parsedOuter.length === 0) return null;
+    const encodedInner = parsedOuter[0]?.[2];
+    if (!encodedInner || typeof encodedInner !== 'string') return null;
+    const parsedInner = JSON.parse(encodedInner);
+    const candidate = parsedInner?.[1];
+    if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate)) {
+      return candidate;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function decodeGoogleNewsUrl(googleUrl: string): Promise<{ url: string | null; error?: string }> {
+  if (!googleUrl.includes('news.google.com/rss/articles/')) {
+    return { url: googleUrl };
+  }
+
+  const articleIdMatch = googleUrl.match(/\/rss\/articles\/([^/?]+)/);
+  const articleId = articleIdMatch?.[1];
+  if (!articleId) {
+    return { url: null, error: 'missing_article_id' };
+  }
+
+  try {
+    const decodeParams = await getGoogleDecodeParams(articleId);
+    if (!decodeParams) {
+      return { url: null, error: 'missing_decode_tokens' };
+    }
+
+    const rpcPayload = [
+      "Fbv4je",
+      `["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],"X","X",1,[1,1,1],1,1,null,0,0,null,0],"${articleId}",${decodeParams.timestamp},"${decodeParams.signature}"]`,
+      null,
+      "generic",
+    ];
+
+    const body = `f.req=${encodeURIComponent(JSON.stringify([[rpcPayload]]))}`;
+    const decodeResponse = await fetchWithTimeout(
+      'https://news.google.com/_/DotsSplashUi/data/batchexecute',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+        },
+        body,
+      },
+      2500
+    );
+
+    if (!decodeResponse.ok) {
+      return { url: null, error: `batchexecute_status_${decodeResponse.status}` };
+    }
+
+    const decodeText = await decodeResponse.text();
+    const decodedUrl = parseDecodedUrlFromBatchExecute(decodeText);
+    if (!decodedUrl) {
+      return { url: null, error: 'decoded_url_not_found' };
+    }
+
+    return { url: normalizeEscapedUrl(decodedUrl) };
+  } catch (error: any) {
+    return { url: null, error: error?.name === 'AbortError' ? 'decode_timeout' : (error?.message || 'decode_exception') };
+  }
+}
+
+function normalizeCandidateImageUrl(candidate: string, baseUrl: string): string | null {
+  const cleaned = candidate.trim();
+  if (!cleaned || cleaned.startsWith('data:')) return null;
+  try {
+    return new URL(cleaned, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeContentImage(url: string): boolean {
+  const lower = url.toLowerCase();
+  const blockedHints = [
+    'logo',
+    'icon',
+    'sprite',
+    'favicon',
+    'avatar',
+    'placeholder',
+    'ads',
+    'doubleclick',
+    'googleads',
+    '.svg',
+    'pixel',
+  ];
+  return !blockedHints.some((hint) => lower.includes(hint));
+}
+
+function pickBestUrlFromSrcset(srcset: string): string | null {
+  const candidates = srcset
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [url, descriptor] = entry.split(/\s+/, 2);
+      const width = descriptor?.endsWith('w') ? Number(descriptor.slice(0, -1)) : 0;
+      return {
+        url: url?.trim() || '',
+        width: Number.isFinite(width) ? width : 0,
+      };
+    })
+    .filter((entry) => entry.url.length > 0);
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.width - a.width);
+  return candidates[0].url;
+}
+
+function extractImageFromHtml(html: string, pageUrl: string): string | null {
+  const imagePatterns = [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i,
+    /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i,
+  ];
+
+  for (const pattern of imagePatterns) {
+    const match = html.match(pattern);
+    const imageUrl = match?.[1] ? normalizeCandidateImageUrl(match[1], pageUrl) : null;
+    if (imageUrl && looksLikeContentImage(imageUrl)) {
+      return imageUrl;
+    }
+  }
+
+  // JSON-LD image fallback (many publishers provide image here).
+  const jsonLdMatches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
+  for (const m of jsonLdMatches) {
+    const payload = m[1];
+    const candidates = Array.from(payload.matchAll(/"image"\s*:\s*"([^"]+)"/gi)).map((x) => x[1]);
+    for (const candidate of candidates) {
+      const imageUrl = normalizeCandidateImageUrl(candidate, pageUrl);
+      if (imageUrl && looksLikeContentImage(imageUrl)) return imageUrl;
+    }
+  }
+
+  // Fallback to body <img src="..."> candidates when metadata is missing.
+  const imgTagMatches = Array.from(html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi));
+  for (const m of imgTagMatches) {
+    const imageUrl = normalizeCandidateImageUrl(m[1], pageUrl);
+    if (imageUrl && looksLikeContentImage(imageUrl)) {
+      return imageUrl;
+    }
+  }
+
+  // Lazy-loaded image attributes often contain the actual content image.
+  const lazyAttrMatches = Array.from(
+    html.matchAll(/<(?:img|source)[^>]+(?:data-src|data-original|data-lazy-src|data-image|data-actualsrc)=["']([^"']+)["'][^>]*>/gi),
+  );
+  for (const m of lazyAttrMatches) {
+    const imageUrl = normalizeCandidateImageUrl(m[1], pageUrl);
+    if (imageUrl && looksLikeContentImage(imageUrl)) {
+      return imageUrl;
+    }
+  }
+
+  // Fallback to srcset candidates for responsive/lazy loading layouts.
+  const srcsetMatches = Array.from(
+    html.matchAll(/<(?:img|source)[^>]+srcset=["']([^"']+)["'][^>]*>/gi),
+  );
+  for (const m of srcsetMatches) {
+    const bestSrcsetUrl = pickBestUrlFromSrcset(m[1]);
+    const imageUrl = bestSrcsetUrl ? normalizeCandidateImageUrl(bestSrcsetUrl, pageUrl) : null;
+    if (imageUrl && looksLikeContentImage(imageUrl)) {
+      return imageUrl;
+    }
+  }
+
+  return null;
+}
+
+async function fetchPublisherImage(publisherUrl: string): Promise<string | null> {
+  try {
+    const response = await fetchWithTimeout(publisherUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Cache-Control': 'no-cache',
+      },
+      redirect: 'follow',
+    }, 3000);
+
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) return null;
+    const html = await response.text();
+    return extractImageFromHtml(html, publisherUrl);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function enrichImagesForArticles(
+  articles: any[],
+  metrics: AlertMetrics,
+  maxCandidatesOverride?: number,
+): Promise<void> {
+  const envMaxCandidates = Number(Deno.env.get('IMAGE_ENRICH_MAX_CANDIDATES') || '0');
+  const fallbackMaxCandidates = 28;
+  const overrideMaxCandidates = typeof maxCandidatesOverride === 'number' && Number.isFinite(maxCandidatesOverride) && maxCandidatesOverride > 0
+    ? Math.floor(maxCandidatesOverride)
+    : null;
+  const maxCandidates = overrideMaxCandidates !== null
+    ? overrideMaxCandidates
+    : (Number.isFinite(envMaxCandidates) && envMaxCandidates > 0 ? envMaxCandidates : fallbackMaxCandidates);
+  const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '1');
+  const candidates = articles
+    .slice(0, Math.min(articles.length, maxCandidates))
+    .filter((article) => !article.image_url && typeof article.url === 'string' && article.url.length > 0);
+
+  metrics.enrichmentCandidates = candidates.length;
+  if (candidates.length === 0) return;
+
+  console.log(`🖼️ Image enrichment: ${candidates.length} candidate articles (max candidates: ${maxCandidates}, concurrency: ${concurrency})`);
+  const decodeFailureByReason = new Map<string, number>();
+
+  let cursor = 0;
+  const workers = new Array(Math.max(1, concurrency)).fill(null).map(async () => {
+    while (cursor < candidates.length) {
+      const idx = cursor++;
+      const article = candidates[idx];
+
+      metrics.decodeAttempts += 1;
+      const decodeResult = await decodeGoogleNewsUrl(article.url);
+      if (!decodeResult.url) {
+        metrics.decodeFailures += 1;
+        const reason = decodeResult.error || 'decode_failed';
+        decodeFailureByReason.set(reason, (decodeFailureByReason.get(reason) || 0) + 1);
+        if (metrics.decodeFailureSamples.length < 10) {
+          metrics.decodeFailureSamples.push({
+            url: article.url,
+            reason,
+          });
+        }
+        continue;
+      }
+
+      metrics.decodeSuccesses += 1;
+      article.url = decodeResult.url;
+      metrics.metadataFetchAttempts += 1;
+      const extractedImage = await fetchPublisherImage(decodeResult.url);
+      if (extractedImage) {
+        article.image_url = extractedImage;
+        metrics.metadataFetchSuccesses += 1;
+        metrics.imagesResolvedFromEnrichment += 1;
+      } else {
+        metrics.metadataFetchFailures += 1;
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  if (decodeFailureByReason.size > 0) {
+    const summary = Array.from(decodeFailureByReason.entries())
+      .map(([reason, count]) => `${reason}:${count}`)
+      .join(', ');
+    console.log(`⚠️ Decode failure summary: ${summary}`);
+  }
+  console.log(`🖼️ Enrichment results: decode ${metrics.decodeSuccesses}/${metrics.decodeAttempts}, images ${metrics.metadataFetchSuccesses}/${metrics.metadataFetchAttempts}`);
+}
+
+async function backfillImagesForExistingRows(supabase: any, tableName: string, rows: any[]): Promise<void> {
+  const withImages = rows.filter((row) => typeof row.image_url === 'string' && row.image_url.length > 0);
+  if (withImages.length === 0) return;
+
+  const concurrency = Number(Deno.env.get('IMAGE_BACKFILL_CONCURRENCY') || '5');
+  let cursor = 0;
+  const workers = new Array(Math.max(1, concurrency)).fill(null).map(async () => {
+    while (cursor < withImages.length) {
+      const idx = cursor++;
+      const article = withImages[idx];
+      const { error } = await (supabase.from(tableName as any) as any)
+        .update({ image_url: article.image_url })
+        .eq('url', article.url)
+        .is('image_url', null);
+
+      if (error) {
+        console.warn(`⚠️ Image backfill failed for ${tableName} (${article.url.substring(0, 80)}...):`, error.message || error);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+}
+
+function shouldSendDecodeAlert(metrics: AlertMetrics): boolean {
+  if (metrics.enrichmentCandidates < 20) return false;
+  const decodeFailureRate = metrics.decodeAttempts > 0 ? metrics.decodeFailures / metrics.decodeAttempts : 0;
+  const imageSuccessRate = metrics.metadataFetchAttempts > 0
+    ? metrics.metadataFetchSuccesses / metrics.metadataFetchAttempts
+    : 0;
+  return decodeFailureRate > 0.4 || imageSuccessRate < 0.3;
+}
+
+async function sendDecodeAlertEmail(metrics: AlertMetrics): Promise<void> {
+  const smtpUser = Deno.env.get('ALERT_SMTP_USER');
+  const smtpPass = Deno.env.get('ALERT_SMTP_PASS');
+  const smtpHost = Deno.env.get('ALERT_SMTP_HOST') || 'smtp.gmail.com';
+  const smtpPort = Number(Deno.env.get('ALERT_SMTP_PORT') || '587');
+  const alertTo = Deno.env.get('ALERT_EMAIL_TO') || 'faizuddinm@myb-site.com';
+
+  if (!smtpUser || !smtpPass) {
+    console.warn('⚠️ Alert email skipped: ALERT_SMTP_USER/ALERT_SMTP_PASS not configured');
+    return;
+  }
+
+  const decodeFailureRate = metrics.decodeAttempts > 0
+    ? ((metrics.decodeFailures / metrics.decodeAttempts) * 100).toFixed(1)
+    : '0.0';
+  const imageSuccessRate = metrics.metadataFetchAttempts > 0
+    ? ((metrics.metadataFetchSuccesses / metrics.metadataFetchAttempts) * 100).toFixed(1)
+    : '0.0';
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+
+  const sampleFailures = metrics.decodeFailureSamples
+    .map((sample, i) => `${i + 1}. ${sample.reason} :: ${sample.url}`)
+    .join('\n');
+
+  const subject = `[snewweb] Image decode alert (${decodeFailureRate}% decode failures)`;
+  const textBody = [
+    'Image enrichment quality alert from scrape-news edge function.',
+    '',
+    `Total fetched: ${metrics.totalArticlesFetched}`,
+    `Enrichment candidates: ${metrics.enrichmentCandidates}`,
+    `Decode attempts: ${metrics.decodeAttempts}`,
+    `Decode successes: ${metrics.decodeSuccesses}`,
+    `Decode failures: ${metrics.decodeFailures}`,
+    `Decode failure rate: ${decodeFailureRate}%`,
+    `Metadata fetch attempts: ${metrics.metadataFetchAttempts}`,
+    `Metadata fetch successes: ${metrics.metadataFetchSuccesses}`,
+    `Metadata fetch failures: ${metrics.metadataFetchFailures}`,
+    `Image success rate: ${imageSuccessRate}%`,
+    `Images resolved from enrichment: ${metrics.imagesResolvedFromEnrichment}`,
+    '',
+    'Sample decode failures:',
+    sampleFailures || 'None collected',
+  ].join('\n');
+
+  await transporter.sendMail({
+    from: smtpUser,
+    to: alertTo,
+    subject,
+    text: textBody,
+  });
+
+  console.log(`📧 Decode alert email sent to ${alertTo}`);
+}
+
+function sourceKey(article: any): string {
+  return (article.source_name || 'unknown').toLowerCase().trim();
+}
+
+function applyDiversityRulesNewestFirst(
+  articles: any[],
+  targetLimit: number,
+  maxPerSourcePercent = 0.25,
+  maxConsecutiveFromSameSource = 2
+): any[] {
+  const sorted = [...articles].sort(
+    (a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+  );
+
+  if (sorted.length === 0) return [];
+
+  const perSourceCap = Math.max(1, Math.floor(sorted.length * maxPerSourcePercent));
+  const countsBySource = new Map<string, number>();
+  const selected: any[] = [];
+  const remaining = [...sorted];
+
+  while (remaining.length > 0 && selected.length < targetLimit) {
+    let chosenIndex = -1;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i];
+      const key = sourceKey(candidate);
+      const count = countsBySource.get(key) || 0;
+      if (count >= perSourceCap) continue;
+
+      const recent = selected.slice(-maxConsecutiveFromSameSource);
+      if (
+        recent.length === maxConsecutiveFromSameSource &&
+        recent.every((item) => sourceKey(item) === key)
+      ) {
+        continue;
+      }
+
+      // remaining is already newest-first, so first valid candidate preserves recency.
+      chosenIndex = i;
+      break;
+    }
+
+    if (chosenIndex === -1) {
+      break;
+    }
+
+    const [chosen] = remaining.splice(chosenIndex, 1);
+    const key = sourceKey(chosen);
+    countsBySource.set(key, (countsBySource.get(key) || 0) + 1);
+    selected.push(chosen);
+  }
+
+  if (selected.length < targetLimit && remaining.length > 0) {
+    for (const fallback of remaining) {
+      if (selected.length >= targetLimit) break;
+      const key = sourceKey(fallback);
+      const recent = selected.slice(-maxConsecutiveFromSameSource);
+      if (
+        recent.length === maxConsecutiveFromSameSource &&
+        recent.every((item) => sourceKey(item) === key)
+      ) {
+        continue;
+      }
+      selected.push(fallback);
+    }
+  }
+
+  console.log(`📊 Diversity output: selected ${selected.length}/${Math.min(targetLimit, sorted.length)} (source cap ${Math.round(maxPerSourcePercent * 100)}%, streak max ${maxConsecutiveFromSameSource})`);
+  return selected;
 }
 
 // Note: We're using Google News URLs directly - no need for redirect resolution
@@ -1030,11 +1536,16 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
     // Google News RSS embeds <img src="..."> in the description CDATA
     let imageUrl: string | null = null;
     const imgMatch = rawDesc.match(/<img[^>]+src=["']([^"']+)["']/i)
+      ?? rawDesc.match(/<img[^>]+(?:data-src|data-original|data-lazy-src)=["']([^"']+)["']/i)
+      ?? rawDesc.match(/<(?:img|source)[^>]+srcset=["']([^"']+)["']/i)
       ?? itemXml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
       ?? itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/i)
       ?? itemXml.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image[^"']*["']/i);
     if (imgMatch) {
-      imageUrl = imgMatch[1];
+      const rawImageCandidate = imgMatch[1];
+      imageUrl = rawImageCandidate.includes(',')
+        ? (pickBestUrlFromSrcset(rawImageCandidate) || rawImageCandidate)
+        : rawImageCandidate;
     }
 
     // Extract source
@@ -1164,8 +1675,10 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
       console.log(`      Category: "${articleCategory}", Country: "${finalCountry}", Region: "${finalRegion}"`);
     }
 
-    // Don't break early - parse ALL articles from RSS feed
-    // We'll limit later when saving to database
+    // Respect per-feed cap to avoid edge runtime timeouts on broad fetches.
+    if (articles.length >= maxArticles) {
+      break;
+    }
   }
 
   console.log(`📊 parseRSSFeed completed: Parsed ${articles.length} articles from ${itemSegments.length} RSS items`);
@@ -1184,6 +1697,140 @@ function getTableNameForRegion(region: string): string | null {
     'South America': 'articles_south_america',
   };
   return regionToTable[region] || null;
+}
+
+async function processBackfillTable(
+  supabase: any,
+  tableName: string,
+  perTableLimit: number
+): Promise<{ table: string; scanned: number; updatedImages: number; updatedUrls: number; failures: number }> {
+  const result = {
+    table: tableName,
+    scanned: 0,
+    updatedImages: 0,
+    updatedUrls: 0,
+    failures: 0,
+  };
+
+  const { data: rows, error } = await (supabase.from(tableName as any) as any)
+    .select('id,url,image_url,published_at')
+    .is('image_url', null)
+    .like('url', 'https://news.google.com/%')
+    .order('published_at', { ascending: false })
+    .limit(perTableLimit);
+
+  if (error) {
+    console.error(`❌ Backfill select failed for ${tableName}:`, error);
+    result.failures += 1;
+    return result;
+  }
+
+  const candidates = rows || [];
+  result.scanned = candidates.length;
+  if (candidates.length === 0) return result;
+
+  console.log(`🛠️ Backfill ${tableName}: scanning ${candidates.length} rows`);
+
+  for (const row of candidates) {
+    try {
+      const decodeResult = await decodeGoogleNewsUrl(row.url);
+      if (!decodeResult.url) continue;
+      const decodedUrl = decodeResult.url;
+      const imageUrl = await fetchPublisherImage(decodedUrl);
+
+      // Always try to populate image first (safe even if URL remains Google).
+      if (imageUrl) {
+        const { error: imageUpdateError } = await (supabase.from(tableName as any) as any)
+          .update({ image_url: imageUrl })
+          .eq('id', row.id);
+        if (!imageUpdateError) {
+          result.updatedImages += 1;
+        }
+      }
+
+      // Try to move URL from Google redirect to publisher URL when unique-safe.
+      if (decodedUrl !== row.url) {
+        const { data: existingDecoded } = await (supabase.from(tableName as any) as any)
+          .select('id,image_url')
+          .eq('url', decodedUrl)
+          .limit(1);
+
+        if (existingDecoded && existingDecoded.length > 0) {
+          // If decoded row exists and has no image, backfill it too.
+          if (imageUrl && !existingDecoded[0].image_url) {
+            await (supabase.from(tableName as any) as any)
+              .update({ image_url: imageUrl })
+              .eq('id', existingDecoded[0].id);
+          }
+        } else {
+          const { error: urlUpdateError } = await (supabase.from(tableName as any) as any)
+            .update({ url: decodedUrl })
+            .eq('id', row.id);
+          if (!urlUpdateError) {
+            result.updatedUrls += 1;
+          }
+        }
+      }
+    } catch (backfillError) {
+      result.failures += 1;
+      console.warn(`⚠️ Backfill failed for ${tableName} row ${row.id}:`, backfillError);
+    }
+  }
+
+  return result;
+}
+
+async function runBackfillImagesMode(supabase: any, requestBody: any): Promise<Response> {
+  const perTableLimit = Number(requestBody?.perTableLimit || 20);
+  const targetRegion = requestBody?.region && typeof requestBody.region === 'string'
+    ? requestBody.region.trim()
+    : null;
+
+  const allRegionTables = [
+    'articles_africa',
+    'articles_asia',
+    'articles_europe',
+    'articles_north_america',
+    'articles_oceania',
+    'articles_south_america',
+  ];
+
+  const tablesToProcess = targetRegion
+    ? [getTableNameForRegion(targetRegion)].filter(Boolean) as string[]
+    : allRegionTables;
+
+  const summaries = [];
+  for (const tableName of tablesToProcess) {
+    const summary = await processBackfillTable(supabase, tableName, perTableLimit);
+    summaries.push(summary);
+  }
+
+  const totals = summaries.reduce(
+    (acc, s) => ({
+      scanned: acc.scanned + s.scanned,
+      updatedImages: acc.updatedImages + s.updatedImages,
+      updatedUrls: acc.updatedUrls + s.updatedUrls,
+      failures: acc.failures + s.failures,
+    }),
+    { scanned: 0, updatedImages: 0, updatedUrls: 0, failures: 0 }
+  );
+
+  console.log(`✅ Backfill complete: scanned=${totals.scanned}, images=${totals.updatedImages}, urls=${totals.updatedUrls}, failures=${totals.failures}`);
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      mode: 'backfillImages',
+      perTableLimit,
+      tablesProcessed: tablesToProcess,
+      totals,
+      summaries,
+    }),
+    {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    }
+  );
 }
 
 Deno.serve(async (req) => {
@@ -1224,7 +1871,11 @@ Deno.serve(async (req) => {
     // Debug: Log raw request body
     console.log('📥 Raw request body:', JSON.stringify(requestBody));
 
-    const { category, region, country, limit } = requestBody || { category: null, region: null, country: null, limit: 12 };
+    const { category, region, country, limit, backfillImages } = requestBody || { category: null, region: null, country: null, limit: 12, backfillImages: false };
+
+    if (backfillImages === true) {
+      return await runBackfillImagesMode(supabase, requestBody);
+    }
 
     console.log('Starting news scraping from Google News RSS feeds...');
     console.log(`📊 Parsed parameters: category="${category}", region="${region}", country="${country}", limit=${limit}`);
@@ -1306,9 +1957,17 @@ Deno.serve(async (req) => {
     console.log(`Initial batch: ${initialBatchSize} articles, then continue fetching up to ${targetLimit} total`);
 
     // Fetch from all countries in the region - parse ALL articles from RSS feeds
+    const shouldLimitCountries = !(region && typeof region === 'string' && region.trim().length > 0);
+    const perCountryMaxArticles = shouldLimitCountries ? 30 : 100;
+
     for (const regionConfig of regionsToSearch) {
-      // Fetch ALL articles from each country (no maxArticles limit)
-      const articles = await fetchNewsFromRegion(regionConfig, category, false, 9999); // Large number to get all
+      // For broad "all regions" fetches, use fewer countries per region and cap items per feed.
+      const articles = await fetchNewsFromRegion(
+        regionConfig,
+        category,
+        shouldLimitCountries,
+        perCountryMaxArticles
+      );
       console.log(`Got ${articles.length} articles from ${regionConfig.region}`);
       allArticles.push(...articles);
     }
@@ -1325,48 +1984,48 @@ Deno.serve(async (req) => {
 
     console.log(`📊 Total unique articles fetched: ${uniqueArticles.length} (removed ${allArticles.length - uniqueArticles.length} duplicates)`);
 
-    // Round-robin interleave: group by source_name, sort each group by date,
-    // then pick one article from each source in turn so no single source dominates.
-    // Cap each source at 25% of total articles so the feed stays full but diverse.
-    const sourceGroups = new Map<string, any[]>();
-    for (const article of uniqueArticles) {
-      const key = (article.source_name || 'unknown').toLowerCase().trim();
-      if (!sourceGroups.has(key)) sourceGroups.set(key, []);
-      sourceGroups.get(key)!.push(article);
-    }
+    // Sort by recency first, then enrich missing images for the newest candidates.
+    const newestFirstArticles = [...uniqueArticles].sort(
+      (a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+    );
 
-    // Sort each source group newest-first, then apply percentage-based cap:
-    // no single source can contribute more than 25% of total articles (min 5)
-    const perSourceCap = Math.max(5, Math.floor(uniqueArticles.length * 0.25));
-    for (const [key, group] of sourceGroups.entries()) {
-      group.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
-      sourceGroups.set(key, group.slice(0, perSourceCap));
-    }
+    const alertMetrics: AlertMetrics = {
+      totalArticlesFetched: newestFirstArticles.length,
+      enrichmentCandidates: 0,
+      decodeAttempts: 0,
+      decodeSuccesses: 0,
+      decodeFailures: 0,
+      metadataFetchAttempts: 0,
+      metadataFetchSuccesses: 0,
+      metadataFetchFailures: 0,
+      imagesResolvedFromEnrichment: 0,
+      decodeFailureSamples: [],
+    };
 
-    const groups = Array.from(sourceGroups.values());
-    const cappedTotal = groups.reduce((sum, g) => sum + g.length, 0);
-    const sortedArticles: any[] = [];
-    let roundIdx = 0;
-    while (sortedArticles.length < cappedTotal) {
-      let addedAny = false;
-      for (const group of groups) {
-        if (group[roundIdx]) {
-          sortedArticles.push(group[roundIdx]);
-          addedAny = true;
-        }
+    // Keep newest-first ordering while enforcing source diversity constraints.
+    const articlesToSave = applyDiversityRulesNewestFirst(
+      newestFirstArticles,
+      targetLimit,
+      0.25, // max 25% per source
+      2 // max 2 consecutive from same source
+    );
+
+    // Enrich only selected feed candidates so compute budget goes to visible cards.
+    const isAllRegionsRequest = !(region && typeof region === 'string' && region.trim().length > 0);
+    const dynamicMaxCandidates = isAllRegionsRequest ? 42 : 32;
+    await enrichImagesForArticles(articlesToSave, alertMetrics, dynamicMaxCandidates);
+
+    if (shouldSendDecodeAlert(alertMetrics)) {
+      try {
+        await sendDecodeAlertEmail(alertMetrics);
+      } catch (emailError) {
+        console.error('❌ Failed to send decode alert email:', emailError);
       }
-      if (!addedAny) break;
-      roundIdx++;
     }
 
-    console.log(`📊 Round-robin interleaved ${sortedArticles.length} articles from ${sourceGroups.size} sources (cap: ${perSourceCap}/source = 25% of ${uniqueArticles.length})`);
-    const sourceSummary = Array.from(sourceGroups.entries()).map(([k, v]) => `${k}(${v.length})`).join(', ');
-    console.log(`   Sources: ${sourceSummary}`);
-
-    // Use sorted articles
-    const articlesToSave = sortedArticles.slice(0, targetLimit);
-
-    console.log(`📊 Saving ${articlesToSave.length} articles (limited from ${sortedArticles.length})`);
+    console.log(`📊 Saving ${articlesToSave.length} articles (limited from ${newestFirstArticles.length})`);
+    const selectedWithImages = articlesToSave.filter((article) => article.image_url).length;
+    console.log(`📊 Selected feed image coverage: ${selectedWithImages}/${articlesToSave.length}`);
 
     // Log article breakdown by country
     if (articlesToSave.length > 0) {
@@ -1424,6 +2083,7 @@ Deno.serve(async (req) => {
         if (initialResult?.error) {
           console.error(`❌ Error inserting initial batch to ${tableName}:`, initialResult.error);
         } else {
+          await backfillImagesForExistingRows(supabase, tableName, initialBatch);
           totalInserted += initialBatch.length;
           console.log(`✅ Phase 1: Successfully inserted ${initialBatch.length} articles to ${tableName}`);
         }
@@ -1443,6 +2103,7 @@ Deno.serve(async (req) => {
             if (batchResult?.error) {
               console.error(`❌ Error inserting batch ${Math.floor(i / batchSize) + 1} to ${tableName}:`, batchResult.error);
             } else {
+              await backfillImagesForExistingRows(supabase, tableName, batch);
               totalInserted += batch.length;
               console.log(`✅ Phase 2: Batch ${Math.floor(i / batchSize) + 1} - Inserted ${batch.length} articles to ${tableName} (total: ${totalInserted})`);
             }
