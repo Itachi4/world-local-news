@@ -442,8 +442,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
           'articles_south_america',
         ];
 
-        // Fetch enough per region to support several pages of round-robin interleaving
-        const PER_REGION_LIMIT = 30;
+        // Fetch enough per region to fill several pages after global date sort
+        const PER_REGION_LIMIT = 60;
         const regionPromises = regionTables.map(async (tableName) => {
           let query = (supabase.from(tableName as any) as any)
             .select("*", { count: 'exact' })
@@ -471,21 +471,15 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         const regionResults = await Promise.all(regionPromises);
         totalCount = regionResults.reduce((sum, result) => sum + result.count, 0);
 
-        // Round-robin interleave by region so every region appears on every page
-        // e.g. page 1: Africa[0], Asia[0], Europe[0], NorthAmerica[0], Oceania[0], SouthAmerica[0], Africa[1], ...
-        const regionArrays = regionResults.map(r => r.articles);
-        const maxLen = Math.max(...regionArrays.map(a => a.length));
-        const interleaved: any[] = [];
-        for (let i = 0; i < maxLen; i++) {
-          for (const arr of regionArrays) {
-            if (arr[i]) interleaved.push(arr[i]);
-          }
-        }
+        // Merge all regions and sort globally by newest first so the freshest
+        // articles always appear at the top regardless of which region they're from.
+        const combined = regionResults.flatMap(r => r.articles);
+        combined.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
 
-        // Apply pagination to interleaved results
+        // Apply pagination to globally-sorted results
         const startIndex = (page - 1) * ARTICLES_PER_PAGE;
         const endIndex = startIndex + ARTICLES_PER_PAGE;
-        newArticles = interleaved.slice(startIndex, endIndex);
+        newArticles = combined.slice(startIndex, endIndex);
 
         console.log(`📊 All Regions query: category="${selectedCategory}", found ${totalCount} total articles across all regions, showing ${newArticles.length} on page ${page}`);
       } else {
