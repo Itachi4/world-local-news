@@ -444,9 +444,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
         // Fetch enough per region to fill several pages after global date sort
         const PER_REGION_LIMIT = 60;
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const regionPromises = regionTables.map(async (tableName) => {
           let query = (supabase.from(tableName as any) as any)
             .select("*", { count: 'exact' })
+            .gte("published_at", sevenDaysAgo)
             .order("published_at", { ascending: false })
             .limit(PER_REGION_LIMIT);
 
@@ -496,8 +498,10 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         }
 
         // For specific region: Use standard query
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         let query = (supabase.from(tableName as any) as any)
           .select("*", { count: 'exact' })
+          .gte("published_at", sevenDaysAgo)
           .order("published_at", { ascending: false })
           .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
 
@@ -941,8 +945,8 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       }
 
       toast({
-        title: "Subscription saved",
-        description: "Saved locally for now. Run the new migration to store digest subscriptions in Supabase.",
+        title: "Subscribed!",
+        description: `You'll receive ${digestFrequency} alerts for ${digestCategories.map(getCategoryLabel).join(", ")}.`,
       });
     } finally {
       setSubscribingDigest(false);
