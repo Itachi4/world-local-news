@@ -149,11 +149,13 @@ function normalizeEscapedUrl(input: string): string {
     .trim();
 }
 
-async function getGoogleDecodeParams(articleId: string): Promise<{ signature: string; timestamp: string } | null> {
+async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: string; timestamp?: string; previewImage?: string } | null> {
   const candidates = [
     `https://news.google.com/articles/${articleId}`,
     `https://news.google.com/rss/articles/${articleId}`,
   ];
+
+  let bestPreviewImage: string | undefined;
 
   for (const url of candidates) {
     try {
@@ -169,14 +171,23 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature: st
       const html = await response.text();
       const signature = html.match(/data-n-a-sg="([^"]+)"/)?.[1];
       const timestamp = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
+
+      // Opportunistically extract a preview image from the same HTML response.
+      if (!bestPreviewImage) {
+        const pageImage = extractImageFromHtml(html, url);
+        if (pageImage) bestPreviewImage = pageImage;
+      }
+
       if (signature && timestamp) {
-        return { signature, timestamp };
+        return { signature, timestamp, previewImage: bestPreviewImage };
       }
     } catch {
       // Try next candidate URL.
     }
   }
-  return null;
+
+  // Return with preview image even if decode tokens were not found.
+  return bestPreviewImage ? { previewImage: bestPreviewImage } : null;
 }
 
 function parseDecodedUrlFromBatchExecute(text: string): string | null {
@@ -199,7 +210,7 @@ function parseDecodedUrlFromBatchExecute(text: string): string | null {
   }
 }
 
-async function decodeGoogleNewsUrl(googleUrl: string): Promise<{ url: string | null; error?: string }> {
+async function decodeGoogleNewsUrl(googleUrl: string): Promise<{ url: string | null; error?: string; previewImage?: string }> {
   if (!googleUrl.includes('news.google.com/rss/articles/')) {
     return { url: googleUrl };
   }
@@ -214,6 +225,11 @@ async function decodeGoogleNewsUrl(googleUrl: string): Promise<{ url: string | n
     const decodeParams = await getGoogleDecodeParams(articleId);
     if (!decodeParams) {
       return { url: null, error: 'missing_decode_tokens' };
+    }
+
+    // If we retrieved a preview image but no decode tokens, return early with the image.
+    if (!decodeParams.signature || !decodeParams.timestamp) {
+      return { url: null, error: 'missing_decode_tokens', previewImage: decodeParams.previewImage };
     }
 
     const rpcPayload = [
@@ -238,16 +254,16 @@ async function decodeGoogleNewsUrl(googleUrl: string): Promise<{ url: string | n
     );
 
     if (!decodeResponse.ok) {
-      return { url: null, error: `batchexecute_status_${decodeResponse.status}` };
+      return { url: null, error: `batchexecute_status_${decodeResponse.status}`, previewImage: decodeParams.previewImage };
     }
 
     const decodeText = await decodeResponse.text();
     const decodedUrl = parseDecodedUrlFromBatchExecute(decodeText);
     if (!decodedUrl) {
-      return { url: null, error: 'decoded_url_not_found' };
+      return { url: null, error: 'decoded_url_not_found', previewImage: decodeParams.previewImage };
     }
 
-    return { url: normalizeEscapedUrl(decodedUrl) };
+    return { url: normalizeEscapedUrl(decodedUrl), previewImage: decodeParams.previewImage };
   } catch (error: any) {
     return { url: null, error: error?.name === 'AbortError' ? 'decode_timeout' : (error?.message || 'decode_exception') };
   }
@@ -392,14 +408,14 @@ async function enrichImagesForArticles(
   maxCandidatesOverride?: number,
 ): Promise<void> {
   const envMaxCandidates = Number(Deno.env.get('IMAGE_ENRICH_MAX_CANDIDATES') || '0');
-  const fallbackMaxCandidates = 28;
+  const fallbackMaxCandidates = 60;
   const overrideMaxCandidates = typeof maxCandidatesOverride === 'number' && Number.isFinite(maxCandidatesOverride) && maxCandidatesOverride > 0
     ? Math.floor(maxCandidatesOverride)
     : null;
   const maxCandidates = overrideMaxCandidates !== null
     ? overrideMaxCandidates
     : (Number.isFinite(envMaxCandidates) && envMaxCandidates > 0 ? envMaxCandidates : fallbackMaxCandidates);
-  const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '1');
+  const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '4');
   const candidates = articles
     .slice(0, Math.min(articles.length, maxCandidates))
     .filter((article) => !article.image_url && typeof article.url === 'string' && article.url.length > 0);
@@ -428,6 +444,11 @@ async function enrichImagesForArticles(
             reason,
           });
         }
+        // Use the preview image extracted from the Google News page as a fallback.
+        if (decodeResult.previewImage) {
+          article.image_url = decodeResult.previewImage;
+          metrics.imagesResolvedFromEnrichment += 1;
+        }
         continue;
       }
 
@@ -441,6 +462,11 @@ async function enrichImagesForArticles(
         metrics.imagesResolvedFromEnrichment += 1;
       } else {
         metrics.metadataFetchFailures += 1;
+        // Publisher image unavailable — fall back to the Google News preview image.
+        if (decodeResult.previewImage) {
+          article.image_url = decodeResult.previewImage;
+          metrics.imagesResolvedFromEnrichment += 1;
+        }
       }
     }
   });
@@ -2012,7 +2038,7 @@ Deno.serve(async (req) => {
 
     // Enrich only selected feed candidates so compute budget goes to visible cards.
     const isAllRegionsRequest = !(region && typeof region === 'string' && region.trim().length > 0);
-    const dynamicMaxCandidates = isAllRegionsRequest ? 42 : 32;
+    const dynamicMaxCandidates = isAllRegionsRequest ? 72 : 60;
     await enrichImagesForArticles(articlesToSave, alertMetrics, dynamicMaxCandidates);
 
     if (shouldSendDecodeAlert(alertMetrics)) {
