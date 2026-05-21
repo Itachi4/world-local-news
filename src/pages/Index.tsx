@@ -853,17 +853,6 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       };
 
       supabase.functions.invoke("scrape-news", { body: requestBody })
-        .then(async (result: any) => {
-          const { data, error } = result;
-          if (error) {
-            console.error('Auto-fetch error:', error);
-            return;
-          }
-
-          // Wait a moment for database to update, then refresh articles
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await fetchArticles(1, false, selectedCountry);
-        })
         .catch(err => {
           console.error('Auto-fetch error:', err);
         });
