@@ -972,14 +972,13 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   if (viewMode === "globe") {
     return (
       <div className="h-screen w-screen overflow-hidden bg-black">
-        <div className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/30 bg-black/60 px-3 py-2 backdrop-blur-sm">
-          <span className="text-xs font-medium text-white">Interactive View</span>
-          <Switch
-            checked
-            onCheckedChange={(checked) => setViewMode(checked ? "globe" : "cards")}
-            aria-label="Toggle interactive globe mode"
-          />
-        </div>
+        <button
+          onClick={() => setViewMode("cards")}
+          className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/40 bg-black/75 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-white/20"
+          aria-label="Exit globe view"
+        >
+          ← Exit Globe
+        </button>
         <InteractiveGlobeView
           selectedRegion={selectedRegion}
           selectedCountry={selectedCountry}

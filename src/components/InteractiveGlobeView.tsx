@@ -3,6 +3,7 @@ import { GLOBE_HOTSPOTS, getCountryByCode } from "@/lib/countryMap";
 import Globe from "react-globe.gl";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 
 interface InteractiveGlobeViewProps {
   selectedRegion: string;
@@ -30,6 +31,21 @@ export function InteractiveGlobeView({
   const visibleHotspots = GLOBE_HOTSPOTS.filter(
     (hotspot) => selectedRegion === "all" || hotspot.region === selectedRegion,
   );
+  // Phong material with specular water map — makes oceans reflective/shiny like Google Earth.
+  const globeMaterial = useMemo(() => {
+    const mat = new THREE.MeshPhongMaterial();
+    mat.bumpScale = 10;
+    new THREE.TextureLoader().load(
+      "https://unpkg.com/three-globe/example/img/earth-water.png",
+      (texture) => {
+        mat.specularMap = texture;
+        mat.specular = new THREE.Color(0x226688);
+        mat.shininess = 20;
+      }
+    );
+    return mat;
+  }, []);
+
   const headlineItems = useMemo(
     () => (
       selectedCountry === "all"
@@ -89,6 +105,9 @@ export function InteractiveGlobeView({
             backgroundColor="rgba(0,0,0,0)"
             globeImageUrl="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
             bumpImageUrl="https://unpkg.com/three-globe/example/img/earth-topology.png"
+            globeMaterial={globeMaterial}
+            atmosphereColor="lightskyblue"
+            atmosphereAltitude={0.25}
             pointsData={visibleHotspots}
             pointLat={(d: any) => d.lat}
             pointLng={(d: any) => d.lng}
