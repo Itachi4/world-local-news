@@ -173,9 +173,19 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
       const timestamp = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
 
       // Opportunistically extract a preview image from the same HTML response.
+      // Reject images hosted on Google-owned domains — the Google News article page
+      // og:image is Google's own "G=" branding, not the article's content image.
       if (!bestPreviewImage) {
         const pageImage = extractImageFromHtml(html, url);
-        if (pageImage) bestPreviewImage = pageImage;
+        if (pageImage) {
+          try {
+            const imgHostname = new URL(pageImage).hostname.toLowerCase();
+            const isGoogleOwned = imgHostname.includes('google') || imgHostname.includes('gstatic') || imgHostname.includes('googleusercontent');
+            if (!isGoogleOwned) bestPreviewImage = pageImage;
+          } catch {
+            bestPreviewImage = pageImage;
+          }
+        }
       }
 
       if (signature && timestamp) {
@@ -381,6 +391,32 @@ function extractImageFromHtml(html: string, pageUrl: string): string | null {
   return null;
 }
 
+/**
+ * Domain-specific image extractors, keyed by hostname (www-stripped, lowercase).
+ * Consulted ONLY inside fetchPublisherImage — never during Google News HTML decoding —
+ * so these patterns cannot affect the decode timeout path.
+ *
+ * Adding a new site: one entry here. Keep patterns single-line safe (no [\s\S] / dotall).
+ */
+const domainImageExtractors: Record<string, (html: string, pageUrl: string) => string | null> = {
+  'newsonair.gov.in': (html, pageUrl) => {
+    // WordPress featured image uses class="attachment-full" (or "attachment-full size-full").
+    // Two attribute-order variants to avoid multiline patterns across tags.
+    const patterns = [
+      /<img[^>]+class="[^"]*attachment-full[^"]*"[^>]+src="([^"]+)"/i,
+      /<img[^>]+src="([^"]+)"[^>]+class="[^"]*attachment-full[^"]*"/i,
+    ];
+    for (const p of patterns) {
+      const m = html.match(p);
+      if (m?.[1]) {
+        const url = normalizeCandidateImageUrl(m[1], pageUrl);
+        if (url && looksLikeContentImage(url)) return url;
+      }
+    }
+    return null;
+  },
+};
+
 async function fetchPublisherImage(publisherUrl: string): Promise<string | null> {
   try {
     const response = await fetchWithTimeout(publisherUrl, {
@@ -396,6 +432,20 @@ async function fetchPublisherImage(publisherUrl: string): Promise<string | null>
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/html')) return null;
     const html = await response.text();
+
+    // Try domain-specific extractor before the generic fallback.
+    try {
+      const hostname = new URL(publisherUrl).hostname.toLowerCase().replace(/^www\./, '');
+      const domainExtractor = domainImageExtractors[hostname];
+      if (domainExtractor) {
+        const domainImage = domainExtractor(html, publisherUrl);
+        if (domainImage) return domainImage;
+        // Domain extractor returned null — fall through to generic logic.
+      }
+    } catch {
+      // URL parse failed; continue to generic extractor.
+    }
+
     return extractImageFromHtml(html, publisherUrl);
   } catch (_error) {
     return null;
@@ -1465,7 +1515,11 @@ async function parseRSSFeed(xml: string, countryName: string, countryCode: strin
   const channelTitle = channelTitleMatch ? decode((channelTitleMatch[1] ?? channelTitleMatch[2]) || '') : '';
   // const isDawnFeed = channelTitle.toLowerCase().includes('dawn') || xml.includes('dawn.com'); // Dawn feeds no longer used
   const isDawnFeed = false; // Dawn.com feeds disabled
-  const isTOIFeed = channelTitle.toLowerCase().includes('times of india') || xml.includes('timesofindia.indiatimes.com');
+  // Only detect as TOI feed if the channel title says "Times of India".
+  // Do NOT check xml.includes('timesofindia.indiatimes.com') — Google News India feeds
+  // contain TOI article links, which would falsely flag the whole feed as TOI and
+  // label every article "Times of India" regardless of actual source.
+  const isTOIFeed = channelTitle.toLowerCase().includes('times of india');
   const defaultSourceName = isTOIFeed ? 'Times of India' : `News from ${countryName}`;
 
   const feedType = isTOIFeed ? 'Times of India' : 'Google News/Other';
@@ -1897,7 +1951,23 @@ Deno.serve(async (req) => {
     // Debug: Log raw request body
     console.log('📥 Raw request body:', JSON.stringify(requestBody));
 
-    const { category, region, country, limit, backfillImages } = requestBody || { category: null, region: null, country: null, limit: 12, backfillImages: false };
+    const { category, region, country, limit, backfillImages, clearGoogleImages } = requestBody || { category: null, region: null, country: null, limit: 12, backfillImages: false, clearGoogleImages: false };
+
+    if (clearGoogleImages === true) {
+      const tables = ['articles_africa','articles_asia','articles_europe','articles_north_america','articles_oceania','articles_south_america'];
+      const results: Record<string, number> = {};
+      for (const table of tables) {
+        // Null out image_url values that are Google-owned (branding images, not real article images).
+        const { count, error } = await (supabase.from(table as any) as any)
+          .update({ image_url: null }, { count: 'exact' })
+          .or('image_url.ilike.%googleusercontent%,image_url.ilike.%lh3.google%,image_url.ilike.%gstatic%,image_url.ilike.%news.google.com%');
+        if (error) console.error(`❌ clearGoogleImages failed for ${table}:`, error);
+        results[table] = count || 0;
+      }
+      return new Response(JSON.stringify({ success: true, mode: 'clearGoogleImages', cleared: results }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
+      });
+    }
 
     if (backfillImages === true) {
       return await runBackfillImagesMode(supabase, requestBody);
