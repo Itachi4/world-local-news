@@ -123,11 +123,11 @@ export function InteractiveGlobeView({
             labelLat={(d: any) => d.lat}
             labelLng={(d: any) => d.lng}
             labelText={(d: any) => d.name}
-            labelSize={0.45}
+            labelSize={1.8}
             labelDotRadius={0}
-            labelColor={(d: any) => (d.code === selectedCountry ? "rgba(254,240,138,0.95)" : "rgba(255,255,255,0.75)")}
-            labelResolution={2}
-            labelAltitude={0.02}
+            labelColor={(d: any) => (d.code === selectedCountry ? "rgba(254,240,138,1)" : "rgba(255,255,255,0.9)")}
+            labelResolution={3}
+            labelAltitude={0.03}
           />
         </div>
 
