@@ -119,6 +119,15 @@ export function InteractiveGlobeView({
               onSelectCountry(d.code, d.region);
               setIsPopupOpen(true);
             }}
+            labelsData={visibleHotspots}
+            labelLat={(d: any) => d.lat}
+            labelLng={(d: any) => d.lng}
+            labelText={(d: any) => d.name}
+            labelSize={0.45}
+            labelDotRadius={0}
+            labelColor={(d: any) => (d.code === selectedCountry ? "rgba(254,240,138,0.95)" : "rgba(255,255,255,0.75)")}
+            labelResolution={2}
+            labelAltitude={0.02}
           />
         </div>
 
