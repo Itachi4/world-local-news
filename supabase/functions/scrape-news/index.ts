@@ -398,23 +398,25 @@ function extractImageFromHtml(html: string, pageUrl: string): string | null {
  *
  * Adding a new site: one entry here. Keep patterns single-line safe (no [\s\S] / dotall).
  */
-const domainImageExtractors: Record<string, (html: string, pageUrl: string) => string | null> = {
-  'newsonair.gov.in': (html, pageUrl) => {
-    // WordPress featured image uses class="attachment-full" (or "attachment-full size-full").
-    // Two attribute-order variants to avoid multiline patterns across tags.
-    const patterns = [
-      /<img[^>]+class="[^"]*attachment-full[^"]*"[^>]+src="([^"]+)"/i,
-      /<img[^>]+src="([^"]+)"[^>]+class="[^"]*attachment-full[^"]*"/i,
-    ];
-    for (const p of patterns) {
-      const m = html.match(p);
-      if (m?.[1]) {
-        const url = normalizeCandidateImageUrl(m[1], pageUrl);
-        if (url && looksLikeContentImage(url)) return url;
-      }
+/** Shared WordPress featured-image extractor for sites that use class="attachment-full". */
+function extractWordPressFeaturedImage(html: string, pageUrl: string): string | null {
+  const patterns = [
+    /<img[^>]+class="[^"]*attachment-full[^"]*"[^>]+src="([^"]+)"/i,
+    /<img[^>]+src="([^"]+)"[^>]+class="[^"]*attachment-full[^"]*"/i,
+  ];
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m?.[1]) {
+      const url = normalizeCandidateImageUrl(m[1], pageUrl);
+      if (url && looksLikeContentImage(url)) return url;
     }
-    return null;
-  },
+  }
+  return null;
+}
+
+const domainImageExtractors: Record<string, (html: string, pageUrl: string) => string | null> = {
+  'newsonair.gov.in': extractWordPressFeaturedImage,
+  'ddindia.co.in': extractWordPressFeaturedImage,
 };
 
 async function fetchPublisherImage(publisherUrl: string): Promise<string | null> {

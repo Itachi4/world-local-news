@@ -473,12 +473,20 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         const regionResults = await Promise.all(regionPromises);
         totalCount = regionResults.reduce((sum, result) => sum + result.count, 0);
 
-        // Merge all regions and sort globally by newest first so the freshest
-        // articles always appear at the top regardless of which region they're from.
-        const combined = regionResults.flatMap(r => r.articles);
-        combined.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
+        // Round-robin merge: take the freshest article from each region in turn so
+        // every region is always represented — prevents high-volume regions (e.g. Asia)
+        // from flooding the first pages.
+        const queues = regionResults.map(r => [...r.articles]); // each already newest-first from DB
+        const combined: any[] = [];
+        let anyLeft = true;
+        while (anyLeft) {
+          anyLeft = false;
+          for (const q of queues) {
+            if (q.length > 0) { combined.push(q.shift()); anyLeft = true; }
+          }
+        }
 
-        // Apply pagination to globally-sorted results
+        // Apply pagination to round-robin results
         const startIndex = (page - 1) * ARTICLES_PER_PAGE;
         const endIndex = startIndex + ARTICLES_PER_PAGE;
         newArticles = combined.slice(startIndex, endIndex);
