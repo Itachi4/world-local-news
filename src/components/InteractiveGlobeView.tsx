@@ -27,6 +27,8 @@ export function InteractiveGlobeView({
   const [globeHeight, setGlobeHeight] = useState(460);
   const globeRef = useRef<any>(null);
   const globeContainerRef = useRef<HTMLDivElement | null>(null);
+  // Tracks whether the initial camera position has been set, so resizes don't snap it back.
+  const cameraInitializedRef = useRef(false);
   const selectedCountryMeta = selectedCountry !== "all" ? getCountryByCode(selectedCountry) : null;
   const visibleHotspots = GLOBE_HOTSPOTS.filter(
     (hotspot) => selectedRegion === "all" || hotspot.region === selectedRegion,
@@ -57,9 +59,14 @@ export function InteractiveGlobeView({
 
   useEffect(() => {
     const updateSize = () => {
-      const width = globeContainerRef.current?.clientWidth || 680;
+      const el = globeContainerRef.current;
+      const width = el?.clientWidth || window.innerWidth || 680;
+      // In fullscreen mode fill the actual viewport; otherwise use the 66% aspect ratio.
+      const height = fullscreen
+        ? (el?.clientHeight || window.innerHeight || 768)
+        : Math.max(380, Math.min(560, Math.round(width * 0.66)));
       setGlobeWidth(width);
-      setGlobeHeight(Math.max(380, Math.min(560, Math.round(width * 0.66))));
+      setGlobeHeight(height);
     };
 
     updateSize();
@@ -68,7 +75,7 @@ export function InteractiveGlobeView({
       observer.observe(globeContainerRef.current);
     }
     return () => observer.disconnect();
-  }, []);
+  }, [fullscreen]);
 
   useEffect(() => {
     if (!globeRef.current) return;
@@ -76,9 +83,19 @@ export function InteractiveGlobeView({
     controls.autoRotate = false;
     controls.autoRotateSpeed = 0;
     controls.enablePan = false;
-    controls.minDistance = 140;
-    controls.maxDistance = 280;
-    globeRef.current.pointOfView({ lat: 18, lng: 12, altitude: 2.1 }, 0);
+    controls.enableZoom = true;
+    controls.minDistance = 110;   // allow reasonably close zoom-in
+    controls.maxDistance = 450;   // allow zooming out to see full globe
+
+    // Apply device pixel ratio for crisp rendering on HiDPI screens
+    try { globeRef.current.renderer().setPixelRatio(window.devicePixelRatio); } catch (_) {/* not ready yet */}
+
+    // Only set the starting viewpoint once — subsequent resize events must NOT
+    // reset this or the user's zoom/rotation will snap back on every viewport change.
+    if (!cameraInitializedRef.current) {
+      cameraInitializedRef.current = true;
+      globeRef.current.pointOfView({ lat: 18, lng: 12, altitude: 2.1 }, 0);
+    }
   }, [globeWidth, globeHeight]);
 
   useEffect(() => {

@@ -57,6 +57,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [selectedRegion, setSelectedRegion] = useState("all");
   const [selectedCountry, setSelectedCountry] = useState("all");
   const [scraping, setScraping] = useState(false);
+  const [autoFetching, setAutoFetching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -842,29 +843,50 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
   // Auto-fetch articles when category, region, or country changes
   useEffect(() => {
+    let ignore = false;
     const autoFetch = async () => {
-      // First, fetch existing articles from database
-      const count = await fetchArticles(1, false, selectedCountry);
+      // 1. Render any cached articles immediately so the page isn't blank
+      await fetchArticles(1, false, selectedCountry);
+      if (ignore) return;
 
-      // Always auto-fetch new headlines when filters change
-      console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", Country="${selectedCountry}", found ${count} existing articles`);
+      // 2. Fire the scrape and await it — this is what was missing before.
+      //    We surface a "Fetching latest…" state via autoFetching so the user
+      //    knows work is in progress instead of seeing "That's all we have."
+      setAutoFetching(true);
+      try {
+        const categoryValue = selectedCategory === "general" ? null : selectedCategory;
+        const requestBody = {
+          category: categoryValue,
+          region: selectedRegion === "all" ? null : selectedRegion,
+          country: selectedCountry === "all" ? null : selectedCountry,
+          limit: 100,
+        };
+        console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", Country="${selectedCountry}"`);
+        await supabase.functions.invoke("scrape-news", { body: requestBody });
+        if (ignore) return;
 
-      // Call scrape in background (don't await to avoid blocking UI)
-      const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-      const requestBody = {
-        category: categoryValue,
-        region: selectedRegion === "all" ? null : selectedRegion,
-        country: selectedCountry === "all" ? null : selectedCountry,
-        limit: 100
-      };
+        // 3. Give the DB a moment to settle, then refetch to show new rows
+        await new Promise(r => setTimeout(r, 1500));
+        if (ignore) return;
+        const displayed = await fetchArticles(1, false, selectedCountry);
+        if (ignore) return;
 
-      supabase.functions.invoke("scrape-news", { body: requestBody })
-        .catch(err => {
-          console.error('Auto-fetch error:', err);
-        });
+        // 4. One retry if the scrape wrote rows but they haven't appeared yet
+        if (displayed === 0) {
+          await new Promise(r => setTimeout(r, 2000));
+          if (ignore) return;
+          await fetchArticles(1, false, selectedCountry);
+        }
+      } catch (err) {
+        console.error('Auto-fetch error:', err);
+      } finally {
+        if (!ignore) setAutoFetching(false);
+      }
     };
 
     autoFetch();
+    // Cleanup: discard results from this effect if filters changed mid-flight
+    return () => { ignore = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, selectedRegion, selectedCountry]);
 
@@ -982,16 +1004,16 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       <div className="h-screen w-screen overflow-hidden bg-black">
         <button
           onClick={() => setViewMode("cards")}
-          className="fixed left-4 top-4 z-40 flex items-center gap-2 rounded-full border border-white/40 bg-black/75 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-white/20"
+          className="fixed left-4 top-4 z-50 flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black shadow-2xl ring-2 ring-white/50 transition-all hover:bg-white/90 active:scale-95"
           aria-label="Exit globe view"
         >
-          ← Exit Globe
+          ✕ Exit Globe View
         </button>
         <InteractiveGlobeView
           selectedRegion={selectedRegion}
           selectedCountry={selectedCountry}
           articles={allTabArticles}
-          loading={loading || scraping}
+          loading={loading || scraping || autoFetching}
           onSelectCountry={handleGlobeCountrySelect}
           fullscreen
         />
@@ -1486,22 +1508,29 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         ) : articlesToRender.length === 0 ? (
           <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50 animate-fade-in">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center animate-bounce-gentle">
-              {activeTab === "favorites" ? (
+              {autoFetching ? (
+                <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+              ) : activeTab === "favorites" ? (
                 <Heart className="w-8 h-8 text-muted-foreground" />
               ) : (
                 <Search className="w-8 h-8 text-muted-foreground" />
               )}
             </div>
             <p className="text-xl font-semibold text-foreground mb-2">
-              {activeTab === "favorites" ? "No favorites yet" : "That's all we have for now"}
+              {autoFetching
+                ? "Fetching latest headlines…"
+                : activeTab === "favorites"
+                ? "No favorites yet"
+                : "That's all we have for now"}
             </p>
             <p className="text-sm text-muted-foreground mb-6">
-              {activeTab === "favorites"
+              {autoFetching
+                ? "Hang tight, we're pulling the freshest stories for you."
+                : activeTab === "favorites"
                 ? "Start adding articles to your favorites by clicking the heart icon"
-                : "Check back soon to get new headlines, or try a different category or region!"
-              }
+                : "Check back soon to get new headlines, or try a different category or region!"}
             </p>
-            {activeTab === "all" && (
+            {activeTab === "all" && !autoFetching && (
               <div className="flex justify-center gap-3">
                 <Button onClick={handleScrape} disabled={scraping} className="animate-scale-in">
                   <RefreshCw className="w-4 h-4 mr-2" />
