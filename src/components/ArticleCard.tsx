@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ExternalLink, Heart, StickyNote, Share2, Copy, Send, Linkedin } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,13 @@ import { regionColor } from "@/lib/regionColor";
 import { proxyImage } from "@/lib/imageProxy";
 import { isBrandingImage, isAiImage } from "@/lib/brandImage";
 import { SnewMark } from "./SnewMark";
+import { supabase } from "@/integrations/supabase/client";
+
+const REGION_TABLE: Record<string, string> = {
+  Africa: "articles_africa", Asia: "articles_asia", Europe: "articles_europe",
+  "North America": "articles_north_america", Oceania: "articles_oceania",
+  "South America": "articles_south_america",
+};
 
 // ── Text helpers ──────────────────────────────────────────────────────────────
 
@@ -101,9 +108,34 @@ export const ArticleCard = ({
   const articleUrl = isSafeExternalUrl(displayUrl) ? displayUrl : isSafeExternalUrl(url) ? url : null;
   const [selectedNote, setSelectedNote] = useState<{ text: string; userId: string } | null>(null);
   const [imgError, setImgError] = useState(false);
-  const hasImage = !!imageUrl && !imgError && !isBrandingImage(imageUrl);
+  const [aiImageUrl, setAiImageUrl] = useState<string | null>(null);
   const requireLoginToOpen = onRequestLogin && !userId;
   const { toast } = useToast();
+
+  // True when the DB/prop image is a real photo (not branding, not null).
+  const hasRealImage = !!imageUrl && !isBrandingImage(imageUrl);
+  // Effective image: real photo wins; fall back to AI-generated if available.
+  const effectiveImageUrl = hasRealImage ? imageUrl : aiImageUrl;
+  const hasImage = !!effectiveImageUrl && !imgError;
+
+  // Generate an AI illustration for any card that has no real photo.
+  useEffect(() => {
+    if (hasRealImage || !articleId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const table = REGION_TABLE[sourceRegion] || "articles_africa";
+        const timeout = new Promise<{ data: null }>((r) => setTimeout(() => r({ data: null }), 20_000));
+        const invoke = supabase.functions.invoke("generate-lead-image", {
+          body: { articleId, table, title, snippet: snippet || "" },
+        });
+        const result = await Promise.race([invoke, timeout]) as any;
+        if (!cancelled && result?.data?.url) setAiImageUrl(result.data.url);
+      } catch { /* silent — logo fallback shows */ }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articleId, hasRealImage]);
 
   const accent = regionColor(sourceRegion);
 
@@ -146,8 +178,9 @@ export const ArticleCard = ({
   };
 
   const isPoster = isLead && !hasImage;
-  const imgHeight = isLead ? 224 : 152;
-  const titleSize = hasImage ? (isLead ? 20 : 15.5) : (isLead ? 32 : 21);
+  // Use full image height when there's an image; smaller backdrop when logo-only.
+  const imgHeight = hasImage ? (isLead ? 224 : 152) : (isLead ? 96 : 72);
+  const titleSize = hasImage ? (isLead ? 20 : 15.5) : (isLead ? 28 : 21);
   const snippetLines = hasImage ? (isLead ? 4 : 3) : (isLead ? 6 : 5);
 
   return (
@@ -174,7 +207,7 @@ export const ArticleCard = ({
           aria-label={`Open: ${decodeEntities(title)}`}
         >
           <img
-            src={proxyImage(imageUrl, { width: isLead ? 900 : 540 }) ?? undefined}
+            src={proxyImage(effectiveImageUrl, { width: isLead ? 900 : 540 }) ?? undefined}
             alt={title}
             onError={() => setImgError(true)}
             referrerPolicy="no-referrer"
@@ -182,7 +215,7 @@ export const ArticleCard = ({
             loading="lazy" decoding="async"
           />
           {/* AI illustration label — shown only when the image was AI-generated */}
-          {isAiImage(imageUrl) && (
+          {isAiImage(effectiveImageUrl) && (
             <span style={{
               position: "absolute", bottom: 6, left: 8,
               fontFamily: '"IBM Plex Mono", monospace',
@@ -201,8 +234,8 @@ export const ArticleCard = ({
           style={{
             height: imgHeight,
             flexShrink: 0,
-            background: `color-mix(in srgb, ${accent} 10%, hsl(var(--card)))`,
-            borderBottom: `1px solid color-mix(in srgb, ${accent} 18%, transparent)`,
+            background: `color-mix(in srgb, ${accent} 16%, hsl(var(--card)))`,
+            borderBottom: `1px solid color-mix(in srgb, ${accent} 28%, transparent)`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -210,7 +243,7 @@ export const ArticleCard = ({
             overflow: "hidden",
           }}
         >
-          <SnewMark size={isPoster ? 64 : 36} />
+          <SnewMark size={isPoster ? 96 : 40} />
         </div>
       )}
 
