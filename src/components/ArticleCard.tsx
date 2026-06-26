@@ -143,6 +143,7 @@ export const ArticleCard = ({
     }
   };
 
+  const isPoster = isLead && !hasImage;
   const imgHeight = isLead ? 224 : 152;
   const titleSize = hasImage ? (isLead ? 20 : 15.5) : (isLead ? 32 : 21);
   const snippetLines = hasImage ? (isLead ? 4 : 3) : (isLead ? 6 : 5);
@@ -163,7 +164,7 @@ export const ArticleCard = ({
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px hsl(var(--shadow))"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
     >
-      {/* Thumbnail — real photo when available; thin accent rule otherwise */}
+      {/* Thumbnail — real photo when available; poster or thin rule otherwise */}
       {hasImage ? (
         <a href={articleUrl || "#"} target="_blank" rel="noopener noreferrer"
           style={{ display: "block", overflow: "hidden", flexShrink: 0 }}
@@ -179,25 +180,88 @@ export const ArticleCard = ({
             loading="lazy" decoding="async"
           />
         </a>
+      ) : isPoster ? (
+        /* Editorial poster masthead — fills the lead slot when no photo is available */
+        <div
+          aria-hidden="true"
+          style={{
+            height: imgHeight,
+            flexShrink: 0,
+            background: `color-mix(in srgb, ${accent} 14%, hsl(var(--card)))`,
+            borderBottom: `1px solid color-mix(in srgb, ${accent} 22%, transparent)`,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            justifyContent: "flex-end",
+            padding: "18px 20px 14px",
+            gap: 6,
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
+          {/* Large decorative region wordmark in the background */}
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              fontFamily: "Newsreader, serif",
+              fontWeight: 700,
+              fontSize: "clamp(56px, 9vw, 92px)",
+              lineHeight: 1,
+              color: accent,
+              opacity: 0.07,
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              userSelect: "none",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {sourceRegion}
+          </span>
+          {/* Foreground label pills */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", position: "relative" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.10em",
+              textTransform: "uppercase",
+              padding: "2px 8px", borderRadius: 99,
+              background: accent,
+              color: "#fff",
+            }}>{sourceRegion}</span>
+            {sourceCountry && sourceCountry !== sourceRegion && (
+              <span style={{
+                fontSize: 10, fontWeight: 500, letterSpacing: "0.06em",
+                padding: "2px 8px", borderRadius: 99,
+                background: `color-mix(in srgb, ${accent} 18%, transparent)`,
+                color: accent,
+                border: `1px solid color-mix(in srgb, ${accent} 30%, transparent)`,
+              }}>{sourceCountry}</span>
+            )}
+          </div>
+        </div>
       ) : (
         <div aria-hidden="true" style={{ height: 3, background: accent, flexShrink: 0 }} />
       )}
 
       {/* Body */}
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, gap: 10 }}>
-        {/* Region / country pills */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <span style={{
-            fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em",
-            padding: "2px 8px", borderRadius: 99,
-            background: `color-mix(in srgb, ${accent} 12%, transparent)`,
-            color: accent, border: `1px solid color-mix(in srgb, ${accent} 25%, transparent)`,
-          }}>{sourceRegion}</span>
-          <span style={{
-            fontSize: 10.5, fontWeight: 500, padding: "2px 8px", borderRadius: 99,
-            border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))",
-          }}>{sourceCountry}</span>
-        </div>
+        {/* Region / country pills — hidden when the poster masthead already shows them */}
+        {!isPoster && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <span style={{
+              fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em",
+              padding: "2px 8px", borderRadius: 99,
+              background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+              color: accent, border: `1px solid color-mix(in srgb, ${accent} 25%, transparent)`,
+            }}>{sourceRegion}</span>
+            <span style={{
+              fontSize: 10.5, fontWeight: 500, padding: "2px 8px", borderRadius: 99,
+              border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))",
+            }}>{sourceCountry}</span>
+          </div>
+        )}
 
         {/* Headline */}
         <h3 style={{ margin: 0, fontFamily: "Newsreader, serif", fontSize: titleSize, fontWeight: 600, lineHeight: 1.35 }}>

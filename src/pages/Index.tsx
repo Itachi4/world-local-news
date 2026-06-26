@@ -48,6 +48,37 @@ const categories = [
 
 const FONT_SCALE_STEPS = [90, 100, 112];
 
+// ── Lead promotion ────────────────────────────────────────────────────────────
+// Returns true when an article has a real content image (not a Google branding logo).
+function hasRealImage(article: any): boolean {
+  const url: string = article.image_url;
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname;
+    if (host.includes("gstatic") || host === "news.google.com") return false;
+  } catch { return false; }
+  return true;
+}
+
+// Promotes up to 3 image-having articles to the first 3 positions (lead +
+// secondaries) so the lead card always has a photo when one exists anywhere in
+// the feed. Order of all other articles is preserved.
+function promoteImageLead(articles: any[]): any[] {
+  if (articles.length < 3) return articles;
+  const result = [...articles];
+  let filled = 0;
+  for (let i = filled; i < result.length && filled < 3; i++) {
+    if (hasRealImage(result[i])) {
+      if (i !== filled) {
+        const [item] = result.splice(i, 1);
+        result.splice(filled, 0, item);
+      }
+      filled++;
+    }
+  }
+  return result;
+}
+
 interface IndexProps {
   user: any;
 }
@@ -850,6 +881,9 @@ const Index = ({ user }: IndexProps) => {
     });
   }, [favoriteArticles, searchQuery]);
 
+  // Lead slot: promote image-having stories to the first 3 positions.
+  const leadArticles = useMemo(() => promoteImageLead(allTabArticles), [allTabArticles]);
+
   const activeTabArticles = activeTab === "favorites" ? favoriteTabArticles : allTabArticles;
   const displayedArticles = viewMode === "globe" ? allTabArticles : activeTabArticles;
 
@@ -1100,7 +1134,7 @@ const Index = ({ user }: IndexProps) => {
         {activeTab === "all" && (
           <>
             <LeadStory
-              articles={allTabArticles.slice(0, 3)}
+              articles={leadArticles.slice(0, 3)}
               userId={user?.id}
               favorites={favorites}
               notes={notes}
@@ -1110,7 +1144,7 @@ const Index = ({ user }: IndexProps) => {
               onRequestLogin={() => navigate("/auth")}
             />
             <ArticleGrid
-              articles={allTabArticles.length >= 3 ? allTabArticles.slice(3) : allTabArticles}
+              articles={leadArticles.length >= 3 ? leadArticles.slice(3) : leadArticles}
               loading={loading}
               loadingMore={loadingMore}
               hasMore={hasMore}
