@@ -167,6 +167,9 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Cache-Control': 'no-cache',
+          // Consent cookie bypasses Google's GDPR consent interstitial on datacenter IPs,
+          // which would otherwise return a cookie-gate page with no decode tokens.
+          'Cookie': 'CONSENT=YES+cb; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpX3YyMRAdGgJlbiACIgQiAggBOAEqAggB',
         },
       }, 4000);
 
@@ -176,15 +179,16 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
       const timestamp = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
 
       // Opportunistically extract a preview image from the same HTML response.
-      // Reject images hosted on Google-owned domains — the Google News article page
-      // og:image is Google's own "G=" branding, not the article's content image.
+      // Reject gstatic/google.com logos and generic branding, but ACCEPT lh3.googleusercontent.com
+      // thumbnails — those are real article images cached by Google (e.g. =s0-w300 sized), not logos.
       if (!bestPreviewImage) {
         const pageImage = extractImageFromHtml(html, url);
         if (pageImage) {
           try {
             const imgHostname = new URL(pageImage).hostname.toLowerCase();
-            const isGoogleOwned = imgHostname.includes('google') || imgHostname.includes('gstatic') || imgHostname.includes('googleusercontent');
-            if (!isGoogleOwned) bestPreviewImage = pageImage;
+            const isGoogleBranding = imgHostname.includes('gstatic') ||
+              (imgHostname.includes('google') && !imgHostname.includes('googleusercontent'));
+            if (!isGoogleBranding) bestPreviewImage = pageImage;
           } catch {
             bestPreviewImage = pageImage;
           }
@@ -503,7 +507,7 @@ async function enrichImagesForArticles(
   maxCandidatesOverride?: number,
 ): Promise<void> {
   const envMaxCandidates = Number(Deno.env.get('IMAGE_ENRICH_MAX_CANDIDATES') || '0');
-  const fallbackMaxCandidates = 60;
+  const fallbackMaxCandidates = 150;
   const overrideMaxCandidates = typeof maxCandidatesOverride === 'number' && Number.isFinite(maxCandidatesOverride) && maxCandidatesOverride > 0
     ? Math.floor(maxCandidatesOverride)
     : null;
@@ -512,10 +516,9 @@ async function enrichImagesForArticles(
     : (Number.isFinite(envMaxCandidates) && envMaxCandidates > 0 ? envMaxCandidates : fallbackMaxCandidates);
   const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '4');
 
-  // Gate image enrichment to recent articles (today + yesterday, 48 h rolling window).
-  // Older articles stay headline-only — their cards show a branded placeholder on the
-  // frontend. This keeps Jina Reader API usage within the free tier.
-  const RECENT_IMAGE_WINDOW_MS = 48 * 60 * 60 * 1000;
+  // Gate image enrichment to articles within the same 7-day window the feed displays.
+  // Widened from 48 h so all displayed articles get a real image when the proxy is set.
+  const RECENT_IMAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
   const recentCutoff = Date.now() - RECENT_IMAGE_WINDOW_MS;
   const isRecent = (a: any) => {
     const t = Date.parse(a.published_at ?? '');
@@ -1863,25 +1866,33 @@ function getTableNameForRegion(region: string): string | null {
 async function processBackfillTable(
   supabase: any,
   tableName: string,
-  perTableLimit: number
-): Promise<{ table: string; scanned: number; updatedImages: number; updatedUrls: number; failures: number }> {
+  perTableLimit: number,
+  dateStart?: string,
+  dateEnd?: string,
+) {
   const result = {
     table: tableName,
     scanned: 0,
     updatedImages: 0,
     updatedUrls: 0,
     failures: 0,
+    decodeSuccess: 0,
+    decodeFail: 0,
+    imageFromPublisher: 0,
+    imageFromJina: 0,
+    imageFromPreview: 0,
+    imageFromGnJina: 0,
   };
 
-  // Only backfill images for recent articles (48 h window) — same gate as enrichImagesForArticles.
-  const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const { data: rows, error } = await (supabase.from(tableName as any) as any)
+  const defaultCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  let query = (supabase.from(tableName as any) as any)
     .select('id,url,image_url,published_at')
     .is('image_url', null)
-    .like('url', 'https://news.google.com/%')
-    .gte('published_at', recentCutoff)
+    .gte('published_at', dateStart || defaultCutoff)
     .order('published_at', { ascending: false })
     .limit(perTableLimit);
+  if (dateEnd) query = query.lt('published_at', dateEnd);
+  const { data: rows, error } = await query;
 
   if (error) {
     console.error(`❌ Backfill select failed for ${tableName}:`, error);
@@ -1897,18 +1908,62 @@ async function processBackfillTable(
 
   for (const row of candidates) {
     try {
-      const decodeResult = await decodeGoogleNewsUrl(row.url);
-      if (!decodeResult.url) continue;
-      const decodedUrl = decodeResult.url;
-      const imageUrl = await fetchPublisherImage(decodedUrl);
+      let decodedUrl: string;
+      let previewImageFallback: string | null = null;
+      if (row.url.startsWith('https://news.google.com/')) {
+        const decodeResult = await decodeGoogleNewsUrl(row.url);
+        previewImageFallback = decodeResult.previewImage || null;
+        if (!decodeResult.url) {
+          result.decodeFail += 1;
+          // Decode failed — use lh3 preview thumbnail if available, else try Jina on the GN URL.
+          let gnImage: string | null = previewImageFallback;
+          let gnImageSource: 'preview' | 'gnJina' | null = gnImage ? 'preview' : null;
+          if (!gnImage) {
+            gnImage = await fetchImageViaRenderApi(row.url);
+            if (gnImage) gnImageSource = 'gnJina';
+          }
+          if (gnImage) {
+            const { error: imgErr } = await (supabase.from(tableName as any) as any)
+              .update({ image_url: gnImage })
+              .eq('id', row.id);
+            if (!imgErr) {
+              result.updatedImages += 1;
+              if (gnImageSource === 'preview') result.imageFromPreview += 1;
+              else result.imageFromGnJina += 1;
+            }
+          }
+          continue;
+        }
+        result.decodeSuccess += 1;
+        decodedUrl = decodeResult.url;
+      } else {
+        decodedUrl = row.url;
+      }
 
-      // Always try to populate image first (safe even if URL remains Google).
+      // Try publisher direct fetch → Jina → previewImage fallback.
+      let imageUrl: string | null = null;
+      let imageSource: 'publisher' | 'jina' | 'preview' | null = null;
+      const directImg = await fetchPublisherImage(decodedUrl);
+      if (directImg) {
+        imageUrl = directImg; imageSource = 'publisher';
+      } else {
+        const jinaImg = await fetchImageViaRenderApi(decodedUrl);
+        if (jinaImg) {
+          imageUrl = jinaImg; imageSource = 'jina';
+        } else if (previewImageFallback) {
+          imageUrl = previewImageFallback; imageSource = 'preview';
+        }
+      }
+
       if (imageUrl) {
         const { error: imageUpdateError } = await (supabase.from(tableName as any) as any)
           .update({ image_url: imageUrl })
           .eq('id', row.id);
         if (!imageUpdateError) {
           result.updatedImages += 1;
+          if (imageSource === 'publisher') result.imageFromPublisher += 1;
+          else if (imageSource === 'jina') result.imageFromJina += 1;
+          else result.imageFromPreview += 1;
         }
       }
 
@@ -1949,6 +2004,8 @@ async function runBackfillImagesMode(supabase: any, requestBody: any): Promise<R
   const targetRegion = requestBody?.region && typeof requestBody.region === 'string'
     ? requestBody.region.trim()
     : null;
+  const dateStart = requestBody?.dateStart || undefined;
+  const dateEnd = requestBody?.dateEnd || undefined;
 
   const allRegionTables = [
     'articles_africa',
@@ -1965,7 +2022,7 @@ async function runBackfillImagesMode(supabase: any, requestBody: any): Promise<R
 
   const summaries = [];
   for (const tableName of tablesToProcess) {
-    const summary = await processBackfillTable(supabase, tableName, perTableLimit);
+    const summary = await processBackfillTable(supabase, tableName, perTableLimit, dateStart, dateEnd);
     summaries.push(summary);
   }
 
@@ -1975,11 +2032,19 @@ async function runBackfillImagesMode(supabase: any, requestBody: any): Promise<R
       updatedImages: acc.updatedImages + s.updatedImages,
       updatedUrls: acc.updatedUrls + s.updatedUrls,
       failures: acc.failures + s.failures,
+      decodeSuccess: acc.decodeSuccess + s.decodeSuccess,
+      decodeFail: acc.decodeFail + s.decodeFail,
+      imageFromPublisher: acc.imageFromPublisher + s.imageFromPublisher,
+      imageFromJina: acc.imageFromJina + s.imageFromJina,
+      imageFromPreview: acc.imageFromPreview + s.imageFromPreview,
+      imageFromGnJina: acc.imageFromGnJina + s.imageFromGnJina,
     }),
-    { scanned: 0, updatedImages: 0, updatedUrls: 0, failures: 0 }
+    { scanned: 0, updatedImages: 0, updatedUrls: 0, failures: 0,
+      decodeSuccess: 0, decodeFail: 0,
+      imageFromPublisher: 0, imageFromJina: 0, imageFromPreview: 0, imageFromGnJina: 0 }
   );
 
-  console.log(`✅ Backfill complete: scanned=${totals.scanned}, images=${totals.updatedImages}, urls=${totals.updatedUrls}, failures=${totals.failures}`);
+  console.log(`✅ Backfill complete: scanned=${totals.scanned}, images=${totals.updatedImages} (publisher=${totals.imageFromPublisher} jina=${totals.imageFromJina} preview=${totals.imageFromPreview} gnJina=${totals.imageFromGnJina}), decode ok/fail=${totals.decodeSuccess}/${totals.decodeFail}, urls=${totals.updatedUrls}, failures=${totals.failures}`);
 
   return new Response(
     JSON.stringify({
@@ -2041,10 +2106,11 @@ Deno.serve(async (req) => {
       const tables = ['articles_africa','articles_asia','articles_europe','articles_north_america','articles_oceania','articles_south_america'];
       const results: Record<string, number> = {};
       for (const table of tables) {
-        // Null out image_url values that are Google-owned (branding images, not real article images).
+        // Null out Google branding/logo images. lh3.googleusercontent.com thumbnails are real article
+        // images and are intentionally kept — only clear gstatic and news.google.com branding.
         const { count, error } = await (supabase.from(table as any) as any)
           .update({ image_url: null }, { count: 'exact' })
-          .or('image_url.ilike.%googleusercontent%,image_url.ilike.%lh3.google%,image_url.ilike.%gstatic%,image_url.ilike.%news.google.com%');
+          .or('image_url.ilike.%gstatic.com%,image_url.ilike.%news.google.com%');
         if (error) console.error(`❌ clearGoogleImages failed for ${table}:`, error);
         results[table] = count || 0;
       }
@@ -2056,6 +2122,7 @@ Deno.serve(async (req) => {
     if (backfillImages === true) {
       return await runBackfillImagesMode(supabase, requestBody);
     }
+
 
     console.log('Starting news scraping from Google News RSS feeds...');
     console.log(`📊 Parsed parameters: category="${category}", region="${region}", country="${country}", limit=${limit}`);
