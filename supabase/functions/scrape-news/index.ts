@@ -179,14 +179,16 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
       const timestamp = html.match(/data-n-a-ts="([^"]+)"/)?.[1];
 
       // Opportunistically extract a preview image from the same HTML response.
-      // Reject gstatic/google.com logos and generic branding, but ACCEPT lh3.googleusercontent.com
-      // thumbnails — those are real article images cached by Google (e.g. =s0-w300 sized), not logos.
+      // Reject gstatic, news.google.com branding, AND lh3.googleusercontent.com thumbnails —
+      // lh3 thumbnails are the generic Google News "G" logo (single fixed hash), not real article images.
+      // Keep blogger.googleusercontent.com and other real publisher-hosted images.
       if (!bestPreviewImage) {
         const pageImage = extractImageFromHtml(html, url);
         if (pageImage) {
           try {
             const imgHostname = new URL(pageImage).hostname.toLowerCase();
             const isGoogleBranding = imgHostname.includes('gstatic') ||
+              imgHostname === 'lh3.googleusercontent.com' ||
               (imgHostname.includes('google') && !imgHostname.includes('googleusercontent'));
             if (!isGoogleBranding) bestPreviewImage = pageImage;
           } catch {
@@ -310,6 +312,7 @@ function looksLikeContentImage(url: string): boolean {
     'googleads',
     '.svg',
     'pixel',
+    'lh3.googleusercontent.com',
   ];
   return !blockedHints.some((hint) => lower.includes(hint));
 }
@@ -2106,11 +2109,11 @@ Deno.serve(async (req) => {
       const tables = ['articles_africa','articles_asia','articles_europe','articles_north_america','articles_oceania','articles_south_america'];
       const results: Record<string, number> = {};
       for (const table of tables) {
-        // Null out Google branding/logo images. lh3.googleusercontent.com thumbnails are real article
-        // images and are intentionally kept — only clear gstatic and news.google.com branding.
+        // Null out Google branding/logo images — gstatic, news.google.com, and the generic Google
+        // News "G" logo served from lh3.googleusercontent.com (single known hash, 144 rows DB-wide).
         const { count, error } = await (supabase.from(table as any) as any)
           .update({ image_url: null }, { count: 'exact' })
-          .or('image_url.ilike.%gstatic.com%,image_url.ilike.%news.google.com%');
+          .or('image_url.ilike.%gstatic.com%,image_url.ilike.%news.google.com%,image_url.ilike.%lh3.googleusercontent.com%');
         if (error) console.error(`❌ clearGoogleImages failed for ${table}:`, error);
         results[table] = count || 0;
       }

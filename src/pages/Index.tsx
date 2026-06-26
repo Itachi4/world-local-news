@@ -14,6 +14,7 @@ import { UserContentViewer } from "@/components/UserContentViewer";
 import InteractiveGlobeView from "@/components/InteractiveGlobeView";
 import { COUNTRIES_BY_REGION, REGION_OPTIONS } from "@/lib/countryMap";
 import { SiteHeader } from "@/components/feed/SiteHeader";
+import { isBrandingImage } from "@/lib/brandImage";
 import { CategoryTabs } from "@/components/feed/CategoryTabs";
 import { FilterBar } from "@/components/feed/FilterBar";
 import { FeedTabs } from "@/components/feed/FeedTabs";
@@ -53,11 +54,7 @@ const FONT_SCALE_STEPS = [90, 100, 112];
 function hasRealImage(article: any): boolean {
   const url: string = article.image_url;
   if (!url) return false;
-  try {
-    const host = new URL(url).hostname;
-    if (host.includes("gstatic") || host === "news.google.com") return false;
-  } catch { return false; }
-  return true;
+  return !isBrandingImage(url);
 }
 
 // Promotes up to 3 image-having articles to the first 3 positions (lead +
