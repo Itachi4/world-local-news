@@ -102,6 +102,9 @@ type AlertMetrics = {
   metadataFetchFailures: number;
   imagesResolvedFromEnrichment: number;
   decodeFailureSamples: Array<{ url: string; reason: string }>;
+  renderApiAttempts: number;
+  renderApiSuccesses: number;
+  renderApiFailures: number;
 };
 
 // Helper: simple fetch with retry for transient errors like 429/503
@@ -165,7 +168,7 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Cache-Control': 'no-cache',
         },
-      }, 2500);
+      }, 4000);
 
       if (!response.ok) continue;
       const html = await response.text();
@@ -260,7 +263,7 @@ async function decodeGoogleNewsUrl(googleUrl: string): Promise<{ url: string | n
         },
         body,
       },
-      2500
+      4000
     );
 
     if (!decodeResponse.ok) {
@@ -346,13 +349,25 @@ function extractImageFromHtml(html: string, pageUrl: string): string | null {
   }
 
   // JSON-LD image fallback (many publishers provide image here).
+  // Handle all common shapes: "image":"url", "image":{"url":"..."}, "image":["url"],
+  // "image":[{"url":"..."}] — the original single-pattern only caught the first form.
   const jsonLdMatches = Array.from(html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi));
+  const jsonLdImagePatterns = [
+    /"image"\s*:\s*"([^"]+)"/gi,
+    /"image"\s*:\s*\{[^{}]*?"url"\s*:\s*"([^"]+)"/gi,
+    /"image"\s*:\s*\[\s*"([^"]+)"/gi,
+    /"image"\s*:\s*\[\s*\{[^{}]*?"url"\s*:\s*"([^"]+)"/gi,
+  ];
   for (const m of jsonLdMatches) {
     const payload = m[1];
-    const candidates = Array.from(payload.matchAll(/"image"\s*:\s*"([^"]+)"/gi)).map((x) => x[1]);
-    for (const candidate of candidates) {
-      const imageUrl = normalizeCandidateImageUrl(candidate, pageUrl);
-      if (imageUrl && looksLikeContentImage(imageUrl)) return imageUrl;
+    for (const pat of jsonLdImagePatterns) {
+      pat.lastIndex = 0;
+      for (const hit of payload.matchAll(pat)) {
+        const candidate = hit[1];
+        if (!candidate) continue;
+        const imageUrl = normalizeCandidateImageUrl(candidate, pageUrl);
+        if (imageUrl && looksLikeContentImage(imageUrl)) return imageUrl;
+      }
     }
   }
 
@@ -428,7 +443,7 @@ async function fetchPublisherImage(publisherUrl: string): Promise<string | null>
         'Cache-Control': 'no-cache',
       },
       redirect: 'follow',
-    }, 3000);
+    }, 5000);
 
     if (!response.ok) return null;
     const contentType = response.headers.get('content-type') || '';
@@ -454,6 +469,34 @@ async function fetchPublisherImage(publisherUrl: string): Promise<string | null>
   }
 }
 
+/**
+ * Jina Reader render-API fallback: fetches a URL via r.jina.ai which renders
+ * JavaScript and bypasses bot-blocking, then extracts an image from the returned HTML.
+ * Only called for recent articles (today + yesterday) to stay within the free tier.
+ * Set env secret JINA_API_KEY to raise rate limits; keyless works on the free tier.
+ */
+async function fetchImageViaRenderApi(targetUrl: string): Promise<string | null> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${encodeURIComponent(targetUrl)}`;
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+      'X-Return-Format': 'html',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    };
+    const jinaApiKey = Deno.env.get('JINA_API_KEY');
+    if (jinaApiKey) headers['Authorization'] = `Bearer ${jinaApiKey}`;
+
+    const response = await fetchWithTimeout(jinaUrl, { headers }, 9000);
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) return null;
+    const html = await response.text();
+    return extractImageFromHtml(html, targetUrl);
+  } catch {
+    return null;
+  }
+}
+
 async function enrichImagesForArticles(
   articles: any[],
   metrics: AlertMetrics,
@@ -468,14 +511,30 @@ async function enrichImagesForArticles(
     ? overrideMaxCandidates
     : (Number.isFinite(envMaxCandidates) && envMaxCandidates > 0 ? envMaxCandidates : fallbackMaxCandidates);
   const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '4');
+
+  // Gate image enrichment to recent articles (today + yesterday, 48 h rolling window).
+  // Older articles stay headline-only — their cards show a branded placeholder on the
+  // frontend. This keeps Jina Reader API usage within the free tier.
+  const RECENT_IMAGE_WINDOW_MS = 48 * 60 * 60 * 1000;
+  const recentCutoff = Date.now() - RECENT_IMAGE_WINDOW_MS;
+  const isRecent = (a: any) => {
+    const t = Date.parse(a.published_at ?? '');
+    return Number.isFinite(t) && t >= recentCutoff;
+  };
+
   const candidates = articles
     .slice(0, Math.min(articles.length, maxCandidates))
-    .filter((article) => !article.image_url && typeof article.url === 'string' && article.url.length > 0);
+    .filter((article) =>
+      !article.image_url &&
+      typeof article.url === 'string' &&
+      article.url.length > 0 &&
+      isRecent(article)
+    );
 
   metrics.enrichmentCandidates = candidates.length;
   if (candidates.length === 0) return;
 
-  console.log(`🖼️ Image enrichment: ${candidates.length} candidate articles (max candidates: ${maxCandidates}, concurrency: ${concurrency})`);
+  console.log(`🖼️ Image enrichment: ${candidates.length} recent candidate articles (max candidates: ${maxCandidates}, concurrency: ${concurrency})`);
   const decodeFailureByReason = new Map<string, number>();
 
   let cursor = 0;
@@ -491,15 +550,24 @@ async function enrichImagesForArticles(
         const reason = decodeResult.error || 'decode_failed';
         decodeFailureByReason.set(reason, (decodeFailureByReason.get(reason) || 0) + 1);
         if (metrics.decodeFailureSamples.length < 10) {
-          metrics.decodeFailureSamples.push({
-            url: article.url,
-            reason,
-          });
+          metrics.decodeFailureSamples.push({ url: article.url, reason });
         }
         // Use the preview image extracted from the Google News page as a fallback.
         if (decodeResult.previewImage) {
           article.image_url = decodeResult.previewImage;
           metrics.imagesResolvedFromEnrichment += 1;
+          continue;
+        }
+        // Decode failed AND no preview — try Jina render API on the original Google News URL.
+        // Jina follows the Google redirect, renders JS, and returns the publisher page.
+        metrics.renderApiAttempts += 1;
+        const jinaImage = await fetchImageViaRenderApi(article.url);
+        if (jinaImage) {
+          article.image_url = jinaImage;
+          metrics.imagesResolvedFromEnrichment += 1;
+          metrics.renderApiSuccesses += 1;
+        } else {
+          metrics.renderApiFailures += 1;
         }
         continue;
       }
@@ -514,10 +582,21 @@ async function enrichImagesForArticles(
         metrics.imagesResolvedFromEnrichment += 1;
       } else {
         metrics.metadataFetchFailures += 1;
-        // Publisher image unavailable — fall back to the Google News preview image.
         if (decodeResult.previewImage) {
+          // Publisher direct-fetch failed — use the Google News page preview as fallback.
           article.image_url = decodeResult.previewImage;
           metrics.imagesResolvedFromEnrichment += 1;
+        } else {
+          // Publisher fetch failed AND no preview — try Jina on the decoded publisher URL.
+          metrics.renderApiAttempts += 1;
+          const jinaImage = await fetchImageViaRenderApi(decodeResult.url);
+          if (jinaImage) {
+            article.image_url = jinaImage;
+            metrics.imagesResolvedFromEnrichment += 1;
+            metrics.renderApiSuccesses += 1;
+          } else {
+            metrics.renderApiFailures += 1;
+          }
         }
       }
     }
@@ -530,7 +609,7 @@ async function enrichImagesForArticles(
       .join(', ');
     console.log(`⚠️ Decode failure summary: ${summary}`);
   }
-  console.log(`🖼️ Enrichment results: decode ${metrics.decodeSuccesses}/${metrics.decodeAttempts}, images ${metrics.metadataFetchSuccesses}/${metrics.metadataFetchAttempts}`);
+  console.log(`🖼️ Enrichment results: decode ${metrics.decodeSuccesses}/${metrics.decodeAttempts}, images ${metrics.metadataFetchSuccesses}/${metrics.metadataFetchAttempts}, renderApi ${metrics.renderApiSuccesses}/${metrics.renderApiAttempts}`);
 }
 
 async function backfillImagesForExistingRows(supabase: any, tableName: string, rows: any[]): Promise<void> {
@@ -1794,10 +1873,13 @@ async function processBackfillTable(
     failures: 0,
   };
 
+  // Only backfill images for recent articles (48 h window) — same gate as enrichImagesForArticles.
+  const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const { data: rows, error } = await (supabase.from(tableName as any) as any)
     .select('id,url,image_url,published_at')
     .is('image_url', null)
     .like('url', 'https://news.google.com/%')
+    .gte('published_at', recentCutoff)
     .order('published_at', { ascending: false })
     .limit(perTableLimit);
 
@@ -2098,6 +2180,9 @@ Deno.serve(async (req) => {
       metadataFetchFailures: 0,
       imagesResolvedFromEnrichment: 0,
       decodeFailureSamples: [],
+      renderApiAttempts: 0,
+      renderApiSuccesses: 0,
+      renderApiFailures: 0,
     };
 
     // Keep newest-first ordering while enforcing source diversity constraints.

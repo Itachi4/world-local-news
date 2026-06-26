@@ -474,20 +474,47 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         const regionResults = await Promise.all(regionPromises);
         totalCount = regionResults.reduce((sum, result) => sum + result.count, 0);
 
-        // Round-robin merge: take the freshest article from each region in turn so
-        // every region is always represented — prevents high-volume regions (e.g. Asia)
-        // from flooding the first pages.
+        // Day-bucket-aware round-robin: group articles by calendar day (newest day first),
+        // then round-robin across regions within each day. This guarantees today's stories
+        // always precede yesterday's, while still preventing any single high-volume region
+        // (e.g. Asia) from flooding the first pages.
         const queues = regionResults.map(r => [...r.articles]); // each already newest-first from DB
+        const allPooled = queues.flat();
+
+        // Collect unique calendar day strings, sorted newest-first.
+        const daySet = new Set<string>();
+        for (const a of allPooled) {
+          const d = new Date(a.published_at);
+          if (!isNaN(d.getTime())) daySet.add(d.toDateString());
+        }
+        const sortedDays = Array.from(daySet).sort(
+          (a, b) => new Date(b).getTime() - new Date(a).getTime()
+        );
+
         const combined: any[] = [];
-        let anyLeft = true;
-        while (anyLeft) {
-          anyLeft = false;
-          for (const q of queues) {
-            if (q.length > 0) { combined.push(q.shift()); anyLeft = true; }
+        for (const day of sortedDays) {
+          // Build per-region sub-queues for this day only (maintaining newest-first order).
+          const dayQueues = queues.map(q =>
+            q.filter(a => {
+              const d = new Date(a.published_at);
+              return !isNaN(d.getTime()) && d.toDateString() === day;
+            })
+          );
+          // Round-robin within this day across all regions.
+          const ptrs = dayQueues.map(() => 0);
+          let anyLeft = true;
+          while (anyLeft) {
+            anyLeft = false;
+            for (let i = 0; i < dayQueues.length; i++) {
+              if (ptrs[i] < dayQueues[i].length) {
+                combined.push(dayQueues[i][ptrs[i]++]);
+                anyLeft = true;
+              }
+            }
           }
         }
 
-        // Apply pagination to round-robin results
+        // Apply pagination to day-bucketed results.
         const startIndex = (page - 1) * ARTICLES_PER_PAGE;
         const endIndex = startIndex + ARTICLES_PER_PAGE;
         newArticles = combined.slice(startIndex, endIndex);

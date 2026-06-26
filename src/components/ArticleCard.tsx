@@ -18,6 +18,18 @@ const regionAccent: Record<string, string> = {
   Oceania:       'border-l-cyan-400',
 };
 
+// Gradient background for the placeholder shown when no image is available.
+// Keyed by region to give each card a recognisable regional colour.
+const regionPlaceholder: Record<string, string> = {
+  Asia:           'from-amber-800   to-amber-950',
+  Europe:         'from-emerald-800 to-emerald-950',
+  'North America':'from-blue-800    to-blue-950',
+  'South America':'from-teal-800    to-teal-950',
+  'Middle East':  'from-orange-800  to-orange-950',
+  Africa:         'from-rose-800    to-rose-950',
+  Oceania:        'from-cyan-800    to-cyan-950',
+};
+
 // Decode common HTML entities from feeds
 const decodeEntities = (str: string) => {
   if (!str) return "";
@@ -233,8 +245,8 @@ export const ArticleCard = ({
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
-      {/* Article thumbnail */}
-      {imageUrl && !imgError && (
+      {/* Article thumbnail — real photo or branded placeholder */}
+      {imageUrl && !imgError ? (
         <a
           href={articleUrl || "#"}
           target="_blank"
@@ -252,6 +264,14 @@ export const ArticleCard = ({
             decoding="async"
           />
         </a>
+      ) : (
+        <div
+          className={`w-full h-40 flex flex-col items-center justify-center gap-1 bg-gradient-to-br ${regionPlaceholder[sourceRegion] ?? 'from-slate-700 to-slate-900'} select-none`}
+          aria-hidden="true"
+        >
+          <span className="text-white/70 text-[11px] font-semibold tracking-widest uppercase">{sourceRegion}</span>
+          <span className="text-white/40 text-[10px] text-center px-6 truncate max-w-full">{sourceName}</span>
+        </div>
       )}
 
       <CardHeader className="pb-3 relative z-10">
