@@ -116,7 +116,7 @@ Create `.env` in the project root:
 
 ```env
 VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=<anon-key>
+VITE_SUPABASE_ANON_KEY=<anon-key>
 ```
 
 ### 3. Apply database migrations
