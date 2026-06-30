@@ -202,7 +202,13 @@ export const ArticleCard = ({
       {/* Thumbnail — real photo, AI illustration, or branded Snew-mark backdrop */}
       {hasImage ? (
         <a href={articleUrl || "#"} target="_blank" rel="noopener noreferrer"
-          style={{ display: "block", overflow: "hidden", flexShrink: 0, position: "relative" }}
+          style={{
+            display: "block", overflow: "hidden", position: "relative",
+            // Lead image grows to fill the column height; grid cards use a fixed height.
+            ...(isLead
+              ? { flex: "1 0 0", minHeight: 200 }
+              : { flexShrink: 0, height: imgHeight }),
+          }}
           onClick={handleArticleClick}
           aria-label={`Open: ${decodeEntities(title)}`}
         >
@@ -211,7 +217,7 @@ export const ArticleCard = ({
             alt={title}
             onError={() => setImgError(true)}
             referrerPolicy="no-referrer"
-            style={{ width: "100%", height: imgHeight, objectFit: "cover", display: "block" }}
+            style={{ width: "100%", height: isLead ? "100%" : imgHeight, objectFit: "cover", display: "block" }}
             loading="lazy" decoding="async"
           />
           {/* AI illustration label — shown only when the image was AI-generated */}
@@ -247,8 +253,8 @@ export const ArticleCard = ({
         </div>
       )}
 
-      {/* Body */}
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: 1, gap: 10 }}>
+      {/* Body — lead with image: fixed height (image fills remaining space); everything else: flex-grow */}
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: isLead && hasImage ? "0 0 auto" : 1, gap: 10 }}>
         {/* Region / country pills */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <span style={{

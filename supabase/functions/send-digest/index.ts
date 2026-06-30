@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import nodemailer from 'npm:nodemailer';
+// Email via Resend HTTP API — no SMTP, works in Deno edge functions
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -276,11 +276,8 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const smtpUser   = Deno.env.get('ALERT_SMTP_USER');
-    const smtpPass   = Deno.env.get('ALERT_SMTP_PASS');
-    const smtpHost   = Deno.env.get('ALERT_SMTP_HOST') || 'smtp.gmail.com';
-    const smtpPort   = Number(Deno.env.get('ALERT_SMTP_PORT') || '587');
-    const emailFrom  = Deno.env.get('DIGEST_EMAIL_FROM') || smtpUser;
+    const resendKey  = Deno.env.get('RESEND_API_KEY');
+    const emailFrom  = Deno.env.get('DIGEST_EMAIL_FROM') || 'nsewspace@manageyourwork.com';
 
     if (!supabaseUrl || !supabaseKey) {
       return new Response(
@@ -288,9 +285,9 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
-    if (!smtpUser || !smtpPass) {
+    if (!resendKey) {
       return new Response(
-        JSON.stringify({ success: false, error: 'SMTP credentials not configured (set ALERT_SMTP_USER and ALERT_SMTP_PASS)' }),
+        JSON.stringify({ success: false, error: 'RESEND_API_KEY not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -325,13 +322,6 @@ Deno.serve(async (req) => {
 
     console.log(`👥 ${subscribers.length} active subscriber(s)`);
 
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-
     const results = { sent: 0, failed: 0, skipped: 0 };
 
     for (const subscriber of subscribers) {
@@ -360,13 +350,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        await transporter.sendMail({
-          from: `snewweb <${emailFrom}>`,
-          to: subscriber.email,
-          subject,
-          html,
-          text,
+        const sendRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: `snewweb <${emailFrom}>`,
+            to: [subscriber.email],
+            subject,
+            html,
+            text,
+          }),
         });
+        if (!sendRes.ok) {
+          const errText = await sendRes.text();
+          throw new Error(`Resend ${sendRes.status}: ${errText}`);
+        }
 
         // Record delivery timestamp
         await (supabase.from('digest_subscriptions') as any)
