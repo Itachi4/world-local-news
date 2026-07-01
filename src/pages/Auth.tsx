@@ -60,7 +60,7 @@ const AuthPage = () => {
 
   const title = isRegister ? "Create an account." : "Welcome back.";
   const sub = isRegister
-    ? "Free forever. Save stories, write notes, and follow the wire."
+    ? "Free forever. Save stories, write notes, and follow the headlines."
     : "Sign in to your saved stories, notes, and digest.";
   const cta = isRegister ? "Create account" : "Sign in";
   const switchText = isRegister ? "Already have an account?" : "Don't have an account?";
@@ -121,7 +121,7 @@ const AuthPage = () => {
               color: "hsl(var(--ink-3))", margin: 0, maxWidth: "42ch",
             }}
           >
-            Save stories, write analysis, and follow the wire from 30+ countries. Free, forever.
+            Save stories, write analysis, and follow the headlines from 30+ countries. Free, forever.
           </p>
         </div>
 
@@ -132,7 +132,7 @@ const AuthPage = () => {
             fontSize: 11, color: "rgba(255,255,255,.4)",
           }}
         >
-          30+ countries · 6 regions · Google News RSS
+          30+ countries · 6 regions
         </div>
       </div>
 
