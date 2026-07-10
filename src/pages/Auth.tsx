@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+type AuthMode = 'signin' | 'signup' | 'forgot' | 'reset';
 
 const FIELD_STYLE: React.CSSProperties = {
   width: "100%", height: 46, padding: "0 14px",
@@ -21,14 +23,36 @@ const LABEL_STYLE: React.CSSProperties = {
 const AuthPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [isRegister, setIsRegister] = useState(false);
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Form fields
+  // Sign in / sign up fields
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  // Forgot password
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+
+  // Reset password
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setMode('reset');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const switchMode = (next: AuthMode) => {
+    setError("");
+    setMode(next);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,11 +60,14 @@ const AuthPage = () => {
     setLoading(true);
 
     try {
-      if (isRegister) {
+      if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: displayName.trim() || undefined } },
+          options: {
+            data: { full_name: displayName.trim() || undefined },
+            emailRedirectTo: 'https://snewweb.org/',
+          },
         });
         if (error) throw error;
         toast({ title: "Account created", description: "Check your inbox to confirm your email." });
@@ -58,13 +85,58 @@ const AuthPage = () => {
     }
   };
 
-  const title = isRegister ? "Create an account." : "Welcome back.";
-  const sub = isRegister
-    ? "Free forever. Save stories, write notes, and follow the headlines."
-    : "Sign in to your saved stories, notes, and digest.";
-  const cta = isRegister ? "Create account" : "Sign in";
-  const switchText = isRegister ? "Already have an account?" : "Don't have an account?";
-  const switchCta = isRegister ? "Sign in" : "Create one";
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: 'https://snewweb.org/auth',
+      });
+      if (error) throw error;
+      setForgotSent(true);
+    } catch (err: any) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast({ title: "Password updated", description: "You can now sign in with your new password." });
+      navigate("/");
+    } catch (err: any) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const title =
+    mode === 'signup' ? "Create an account." :
+    mode === 'forgot' ? "Reset your password." :
+    mode === 'reset'  ? "Set a new password." :
+    "Welcome back.";
+
+  const sub =
+    mode === 'signup' ? "Free forever. Save stories, write notes, and follow the headlines." :
+    mode === 'forgot' ? "Enter your email and we'll send you a reset link." :
+    mode === 'reset'  ? "Choose a new password for your account." :
+    "Sign in to your saved stories, notes, and digest.";
 
   return (
     <div
@@ -160,85 +232,241 @@ const AuthPage = () => {
             {sub}
           </p>
 
-          <form onSubmit={handleSubmit}>
-            {isRegister && (
+          {/* ── Sign in / Sign up ── */}
+          {(mode === 'signin' || mode === 'signup') && (
+            <form onSubmit={handleSubmit}>
+              {mode === 'signup' && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={LABEL_STYLE}>Display name</label>
+                  <input
+                    placeholder="Jordan Avery"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    style={FIELD_STYLE}
+                    autoComplete="name"
+                  />
+                </div>
+              )}
+
               <div style={{ marginBottom: 16 }}>
-                <label style={LABEL_STYLE}>Display name</label>
+                <label style={LABEL_STYLE}>Email</label>
                 <input
-                  placeholder="Jordan Avery"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
                   style={FIELD_STYLE}
-                  autoComplete="name"
+                  autoComplete="email"
                 />
               </div>
-            )}
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={LABEL_STYLE}>Email</label>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                style={FIELD_STYLE}
-                autoComplete="email"
-              />
+              <div style={{ marginBottom: mode === 'signin' ? 10 : 20 }}>
+                <label style={LABEL_STYLE}>Password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  style={FIELD_STYLE}
+                  autoComplete={mode === 'signup' ? "new-password" : "current-password"}
+                />
+              </div>
+
+              {mode === 'signin' && (
+                <div style={{ marginBottom: 20, textAlign: "right" }}>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    style={{
+                      background: "none", border: 0, padding: 0,
+                      color: "hsl(var(--muted-foreground))",
+                      fontSize: 13, cursor: "pointer",
+                      fontFamily: "inherit",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              {error && (
+                <p style={{ fontSize: 13, color: "hsl(var(--destructive))", marginBottom: 14 }}>
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: "100%", height: 48, border: 0,
+                  background: "hsl(var(--primary))",
+                  color: "#fff",
+                  borderRadius: 4,
+                  fontFamily: "inherit", fontSize: 15, fontWeight: 600,
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.7 : 1,
+                }}
+              >
+                {loading ? "Please wait…" : mode === 'signup' ? "Create account" : "Sign in"}
+              </button>
+            </form>
+          )}
+
+          {/* ── Forgot password ── */}
+          {mode === 'forgot' && (
+            forgotSent ? (
+              <div style={{ fontSize: 14, color: "hsl(var(--muted-foreground))", lineHeight: 1.6 }}>
+                <p style={{ margin: "0 0 18px" }}>
+                  If an account exists for <strong style={{ color: "hsl(var(--foreground))" }}>{forgotEmail}</strong>,
+                  a password reset link has been sent. Check your inbox and spam folder.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchMode('signin')}
+                  style={{
+                    background: "none", border: 0, padding: 0,
+                    color: "hsl(var(--accent-ink))",
+                    fontWeight: 600, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 14,
+                  }}
+                >
+                  ← Back to sign in
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPassword}>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={LABEL_STYLE}>Email</label>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    required
+                    style={FIELD_STYLE}
+                    autoComplete="email"
+                  />
+                </div>
+
+                {error && (
+                  <p style={{ fontSize: 13, color: "hsl(var(--destructive))", marginBottom: 14 }}>
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: "100%", height: 48, border: 0,
+                    background: "hsl(var(--primary))",
+                    color: "#fff",
+                    borderRadius: 4,
+                    fontFamily: "inherit", fontSize: 15, fontWeight: 600,
+                    cursor: loading ? "not-allowed" : "pointer",
+                    opacity: loading ? 0.7 : 1,
+                    marginBottom: 16,
+                  }}
+                >
+                  {loading ? "Please wait…" : "Send reset link"}
+                </button>
+
+                <div style={{ textAlign: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('signin')}
+                    style={{
+                      background: "none", border: 0, padding: 0,
+                      color: "hsl(var(--muted-foreground))",
+                      fontSize: 13.5, cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    ← Back to sign in
+                  </button>
+                </div>
+              </form>
+            )
+          )}
+
+          {/* ── Reset password ── */}
+          {mode === 'reset' && (
+            <form onSubmit={handleResetPassword}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={LABEL_STYLE}>New password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  style={FIELD_STYLE}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={LABEL_STYLE}>Confirm new password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  style={FIELD_STYLE}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              {error && (
+                <p style={{ fontSize: 13, color: "hsl(var(--destructive))", marginBottom: 14 }}>
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: "100%", height: 48, border: 0,
+                  background: "hsl(var(--primary))",
+                  color: "#fff",
+                  borderRadius: 4,
+                  fontFamily: "inherit", fontSize: 15, fontWeight: 600,
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.7 : 1,
+                }}
+              >
+                {loading ? "Please wait…" : "Update password"}
+              </button>
+            </form>
+          )}
+
+          {/* ── Mode switcher (signin / signup only) ── */}
+          {(mode === 'signin' || mode === 'signup') && (
+            <div style={{ textAlign: "center", marginTop: 18, fontSize: 13.5, color: "hsl(var(--muted-foreground))" }}>
+              {mode === 'signin' ? "Don't have an account?" : "Already have an account?"}{" "}
+              <button
+                type="button"
+                onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+                style={{
+                  background: "none", border: 0, padding: 0,
+                  color: "hsl(var(--accent-ink))",
+                  fontWeight: 600, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: "inherit",
+                }}
+              >
+                {mode === 'signin' ? "Create one" : "Sign in"}
+              </button>
             </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={LABEL_STYLE}>Password</label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                style={FIELD_STYLE}
-                autoComplete={isRegister ? "new-password" : "current-password"}
-              />
-            </div>
-
-            {error && (
-              <p style={{ fontSize: 13, color: "hsl(var(--destructive))", marginBottom: 14 }}>
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%", height: 48, border: 0,
-                background: "hsl(var(--primary))",
-                color: "#fff",
-                borderRadius: 4,
-                fontFamily: "inherit", fontSize: 15, fontWeight: 600,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.7 : 1,
-              }}
-            >
-              {loading ? "Please wait…" : cta}
-            </button>
-          </form>
-
-          <div style={{ textAlign: "center", marginTop: 18, fontSize: 13.5, color: "hsl(var(--muted-foreground))" }}>
-            {switchText}{" "}
-            <button
-              type="button"
-              onClick={() => { setIsRegister(!isRegister); setError(""); }}
-              style={{
-                background: "none", border: 0, padding: 0,
-                color: "hsl(var(--accent-ink))",
-                fontWeight: 600, cursor: "pointer",
-                fontFamily: "inherit", fontSize: "inherit",
-              }}
-            >
-              {switchCta}
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
