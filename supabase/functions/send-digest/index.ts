@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const resendKey  = Deno.env.get('RESEND_API_KEY');
-    const emailFrom  = Deno.env.get('DIGEST_EMAIL_FROM') || 'nsewspace@manageyourwork.com';
+    const emailFrom  = Deno.env.get('DIGEST_EMAIL_FROM') || 'digest@snewweb.org';
 
     if (!supabaseUrl || !supabaseKey) {
       return new Response(
