@@ -1868,6 +1868,66 @@ function getTableNameForRegion(region: string): string | null {
   return regionToTable[region] || null;
 }
 
+async function generateAiImageForBackfill(
+  articleId: string,
+  title: string,
+  snippet: string,
+  supabase: any,
+  supabaseUrl: string,
+  togetherKey: string,
+): Promise<string | null> {
+  const BUCKET = 'lead-images';
+  const filename = `${articleId}.png`;
+
+  // Cache check — skip generation if already stored in bucket
+  const { data: existing } = await supabase.storage.from(BUCKET).list('', { search: filename });
+  if (existing?.some((f: any) => f.name === filename)) {
+    const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(filename);
+    return publicUrl;
+  }
+
+  const subject = title.replace(/["""'']/g, '').slice(0, 120);
+  const ctx = snippet ? snippet.replace(/["""'']/g, '').slice(0, 80) : '';
+  const prompt =
+    `Editorial news illustration, muted newsroom palette, conceptual and abstract, ` +
+    `no text, no real faces, no logos, no branding. Topic: "${subject}". ` +
+    (ctx ? `Context: "${ctx}". ` : '') +
+    `Style: flat editorial graphic, limited palette, clean composition.`;
+
+  const genRes = await fetch('https://api.together.xyz/v1/images/generations', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${togetherKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'black-forest-labs/FLUX.1-schnell',
+      prompt,
+      width: 1024,
+      height: 576,
+      steps: 4,
+      n: 1,
+      response_format: 'b64_json',
+    }),
+  });
+  if (!genRes.ok) {
+    console.warn(`⚠️ Together AI error ${genRes.status} for article ${articleId}`);
+    return null;
+  }
+
+  const b64 = (await genRes.json())?.data?.[0]?.b64_json;
+  if (!b64) return null;
+
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const { error: uploadErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(filename, bytes, { contentType: 'image/png', upsert: true });
+  if (uploadErr) {
+    console.warn(`⚠️ Storage upload failed for ${articleId}:`, uploadErr.message);
+    return null;
+  }
+
+  const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(filename);
+  return publicUrl;
+}
+
 async function processBackfillTable(
   supabase: any,
   tableName: string,
@@ -1887,11 +1947,12 @@ async function processBackfillTable(
     imageFromJina: 0,
     imageFromPreview: 0,
     imageFromGnJina: 0,
+    imageFromAi: 0,
   };
 
   const defaultCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   let query = (supabase.from(tableName as any) as any)
-    .select('id,url,image_url,published_at')
+    .select('id,url,image_url,published_at,title,snippet')
     .is('image_url', null)
     .gte('published_at', dateStart || defaultCutoff)
     .order('published_at', { ascending: false })
@@ -1960,6 +2021,18 @@ async function processBackfillTable(
         }
       }
 
+      // AI fallback for articles still without an image after real-image pipeline
+      if (!imageUrl) {
+        const togetherKey = Deno.env.get('TOGETHER_API_KEY');
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+        if (togetherKey && row.title) {
+          const aiUrl = await generateAiImageForBackfill(
+            row.id, row.title, row.snippet || '', supabase, supabaseUrl, togetherKey,
+          );
+          if (aiUrl) { imageUrl = aiUrl; imageSource = 'ai'; }
+        }
+      }
+
       if (imageUrl) {
         const { error: imageUpdateError } = await (supabase.from(tableName as any) as any)
           .update({ image_url: imageUrl })
@@ -1968,6 +2041,7 @@ async function processBackfillTable(
           result.updatedImages += 1;
           if (imageSource === 'publisher') result.imageFromPublisher += 1;
           else if (imageSource === 'jina') result.imageFromJina += 1;
+          else if (imageSource === 'ai') result.imageFromAi += 1;
           else result.imageFromPreview += 1;
         }
       }
@@ -2043,13 +2117,14 @@ async function runBackfillImagesMode(supabase: any, requestBody: any): Promise<R
       imageFromJina: acc.imageFromJina + s.imageFromJina,
       imageFromPreview: acc.imageFromPreview + s.imageFromPreview,
       imageFromGnJina: acc.imageFromGnJina + s.imageFromGnJina,
+      imageFromAi: acc.imageFromAi + s.imageFromAi,
     }),
     { scanned: 0, updatedImages: 0, updatedUrls: 0, failures: 0,
       decodeSuccess: 0, decodeFail: 0,
-      imageFromPublisher: 0, imageFromJina: 0, imageFromPreview: 0, imageFromGnJina: 0 }
+      imageFromPublisher: 0, imageFromJina: 0, imageFromPreview: 0, imageFromGnJina: 0, imageFromAi: 0 }
   );
 
-  console.log(`✅ Backfill complete: scanned=${totals.scanned}, images=${totals.updatedImages} (publisher=${totals.imageFromPublisher} jina=${totals.imageFromJina} preview=${totals.imageFromPreview} gnJina=${totals.imageFromGnJina}), decode ok/fail=${totals.decodeSuccess}/${totals.decodeFail}, urls=${totals.updatedUrls}, failures=${totals.failures}`);
+  console.log(`✅ Backfill complete: scanned=${totals.scanned}, images=${totals.updatedImages} (publisher=${totals.imageFromPublisher} jina=${totals.imageFromJina} preview=${totals.imageFromPreview} gnJina=${totals.imageFromGnJina} ai=${totals.imageFromAi}), decode ok/fail=${totals.decodeSuccess}/${totals.decodeFail}, urls=${totals.updatedUrls}, failures=${totals.failures}`);
 
   return new Response(
     JSON.stringify({
