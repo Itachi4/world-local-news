@@ -83,6 +83,7 @@ interface IndexProps {
 const Index = ({ user }: IndexProps) => {
   const navigate = useNavigate();
   const [articles, setArticles] = useState<any[]>([]);
+  const [articleBuffer, setArticleBuffer] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>("general");
   const [selectedRegion, setSelectedRegion] = useState("all");
@@ -459,6 +460,7 @@ const Index = ({ user }: IndexProps) => {
     } else {
       setLoading(true);
       setCurrentPage(1);
+      setArticleBuffer([]);
     }
 
     try {
@@ -567,12 +569,16 @@ const Index = ({ user }: IndexProps) => {
         }
 
         // For specific region: Use standard query
+        // Page 1: pre-fetch 3× to fill buffer; subsequent pages: fetch 1× to append
+        const fetchCount = page === 1 ? 3 * ARTICLES_PER_PAGE : ARTICLES_PER_PAGE;
+        const from = page === 1 ? 0 : articles.length;
+        const to = from + fetchCount - 1;
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         let query = (supabase.from(tableName as any) as any)
           .select("*", { count: 'exact' })
           .gte("published_at", sevenDaysAgo)
           .order("published_at", { ascending: false })
-          .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+          .range(from, to);
 
         // Filter by category if not general
         if (selectedCategory !== "general") {
@@ -648,6 +654,11 @@ const Index = ({ user }: IndexProps) => {
 
         newArticles = data || [];
         totalCount = count || 0;
+        // Page 1: put excess rows into the buffer; display only the first page
+        if (page === 1) {
+          setArticleBuffer(newArticles.slice(ARTICLES_PER_PAGE));
+          newArticles = newArticles.slice(0, ARTICLES_PER_PAGE);
+        }
       }
 
       setTotalArticles(totalCount);
@@ -791,44 +802,20 @@ const Index = ({ user }: IndexProps) => {
   };
 
   const handleLoadMore = async () => {
-    if (loadingMore || !hasMore) return;
+    if (loading || loadingMore || !hasMore) return;
 
-    // If we're on the first page and have few articles, fetch more from the edge function
-    if (currentPage === 1 && articles.length < 20) {
-      setLoadingMore(true);
-      try {
-        const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-        const functionPromise = supabase.functions.invoke("scrape-news", {
-          body: {
-            category: categoryValue,
-            region: selectedRegion === "all" ? null : selectedRegion,
-            country: selectedCountry === "all" ? null : selectedCountry,
-            limit: 100  // Fetch more articles to get good coverage
-          }
-        });
-
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout')), 30000);
-        });
-
-        const result = await Promise.race([functionPromise, timeoutPromise]) as any;
-        const { data, error } = result;
-
-        if (error) throw error;
-
-        // Refresh articles from database
-        await fetchArticles(currentPage + 1, true);
-      } catch (error) {
-        console.error("Error loading more articles:", error);
-        // Fall back to regular pagination if edge function fails
-        await fetchArticles(currentPage + 1, true);
-      } finally {
-        setLoadingMore(false);
-      }
-    } else {
-      // Regular pagination for subsequent pages
-      await fetchArticles(currentPage + 1, true);
+    // Serve from pre-fetched buffer instantly (no spinner, no DB call)
+    if (articleBuffer.length >= ARTICLES_PER_PAGE) {
+      const next = articleBuffer.slice(0, ARTICLES_PER_PAGE);
+      const remaining = articleBuffer.slice(ARTICLES_PER_PAGE);
+      setArticles(prev => [...prev, ...next]);
+      setArticleBuffer(remaining);
+      setCurrentPage(p => p + 1);
+      return;
     }
+
+    // Buffer exhausted — fetch next batch from DB
+    await fetchArticles(currentPage + 1, true);
   };
 
   const allTabArticles = useMemo(() => {

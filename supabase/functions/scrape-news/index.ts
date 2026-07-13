@@ -919,6 +919,8 @@ const nonEnglishCountries = new Set([
   'FR', 'DE', 'IT', 'ES', 'NL', 'SE', 'PL',
   // North America
   'MX',
+  // Oceania — FJ and PG have no Google News editions; use US edition for English results
+  'FJ', 'PG',
 ]);
 
 // Helper: get the gl/ceid country code to use for Google News RSS
@@ -1508,9 +1510,9 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
           urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${queryString}&gl=${gl}&hl=${locale}&ceid=${ceid}`);
           console.log(`🔗 RSS URL [${category}]: ${urls[0]}`);
         } else {
-          // General news
-          const generalQuery = buildGoogleNewsQuery('general', country.name);
-          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${generalQuery}&gl=${gl}&hl=${locale}&ceid=${ceid}`);
+          // General news — use "CountryName when:4d" (same pattern as special-cased countries)
+          const countryNameEncoded = country.name.replace(/\s+/g, '+');
+          urls.push(`${GOOGLE_NEWS_RSS_BASE}/search?q=${countryNameEncoded}+when:4d&gl=${gl}&hl=${locale}&ceid=${ceid}`);
           console.log(`🔗 RSS URL [General]: ${urls[0]}`);
         }
         console.log(`   Country: ${country.name} (${country.code}), Region: ${region.region}, gl: ${gl}`);
