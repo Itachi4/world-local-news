@@ -126,7 +126,7 @@ export const ArticleCard = ({
       return;
     }
     if (typeof navigator !== "undefined" && navigator.share) {
-      try { await navigator.share({ title: decodeEntities(title), text: shareText, url: articleUrl }); return; } catch {}
+      try { await navigator.share({ title: decodeEntities(title), text: shareText, url: articleUrl }); return; } catch { /* user cancelled share dialog */ }
     }
     try {
       await navigator.clipboard.writeText(articleUrl);

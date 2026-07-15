@@ -616,7 +616,7 @@ const Index = ({ user }: IndexProps) => {
             console.warn("Falling back to fetching all articles without category filter...");
 
             // Fall back to fetching all articles without category filter
-            let fallbackQuery = (supabase.from(tableName as any) as any)
+            const fallbackQuery = (supabase.from(tableName as any) as any)
               .select("*", { count: 'exact' })
               .order("published_at", { ascending: false })
               .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
