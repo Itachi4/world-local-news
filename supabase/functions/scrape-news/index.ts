@@ -1997,8 +1997,23 @@ async function processBackfillTable(
               if (gnImageSource === 'preview') result.imageFromPreview += 1;
               else result.imageFromGnJina += 1;
             }
+            continue; // Got a real image — move to next row
           }
-          continue;
+          // No real image found — fall through to AI generation below
+          const togetherKey = Deno.env.get('TOGETHER_API_KEY');
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+          if (togetherKey && row.title) {
+            const aiUrl = await generateAiImageForBackfill(
+              row.id, row.title, row.snippet || '', supabase, supabaseUrl, togetherKey,
+            );
+            if (aiUrl) {
+              const { error: aiErr } = await (supabase.from(tableName as any) as any)
+                .update({ image_url: aiUrl })
+                .eq('id', row.id);
+              if (!aiErr) { result.updatedImages += 1; result.imageFromAi += 1; }
+            }
+          }
+          continue; // URL decode failed — skip publisher fetch below
         }
         result.decodeSuccess += 1;
         decodedUrl = decodeResult.url;
