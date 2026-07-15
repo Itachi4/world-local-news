@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ArticleCard } from "@/components/ArticleCard";
@@ -124,6 +124,7 @@ const Index = ({ user }: IndexProps) => {
   });
   const ARTICLES_PER_PAGE = 10;
   const { toast } = useToast();
+  const prefetchingRef = useRef(false);
 
   const getCategoryLabel = (value: string) =>
     categories.find((category) => category.value === value)?.label || value;
@@ -550,9 +551,15 @@ const Index = ({ user }: IndexProps) => {
         }
 
         // Apply pagination to day-bucketed results.
-        const startIndex = (page - 1) * ARTICLES_PER_PAGE;
-        const endIndex = startIndex + ARTICLES_PER_PAGE;
-        newArticles = combined.slice(startIndex, endIndex);
+        // Page 1: buffer the full pool so all subsequent load-mores are instant (no DB call).
+        if (page === 1) {
+          newArticles = combined.slice(0, ARTICLES_PER_PAGE);
+          setArticleBuffer(combined.slice(ARTICLES_PER_PAGE));
+        } else {
+          const startIndex = (page - 1) * ARTICLES_PER_PAGE;
+          const endIndex = startIndex + ARTICLES_PER_PAGE;
+          newArticles = combined.slice(startIndex, endIndex);
+        }
 
         console.log(`📊 All Regions query: category="${selectedCategory}", found ${totalCount} total articles across all regions, showing ${newArticles.length} on page ${page}`);
       } else {
@@ -801,6 +808,37 @@ const Index = ({ user }: IndexProps) => {
     }
   };
 
+  // Silently fills the buffer for specific-region views when it runs low.
+  // For "all regions" the full pool is already buffered at page 1, so nothing to do.
+  const prefetchIntoBuffer = useCallback(async () => {
+    if (prefetchingRef.current || !hasMore || selectedRegion === 'all') return;
+    const tableName = getTableNameForRegion(selectedRegion);
+    if (!tableName) return;
+    prefetchingRef.current = true;
+    try {
+      const from = articles.length + articleBuffer.length;
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      let q = (supabase.from(tableName as any) as any)
+        .select('*')
+        .gte('published_at', sevenDaysAgo)
+        .order('published_at', { ascending: false })
+        .range(from, from + ARTICLES_PER_PAGE - 1);
+      if (selectedCategory !== 'general') q = q.eq('category', selectedCategory);
+      if (selectedCountry !== 'all') q = q.eq('source_country', selectedCountry);
+      const { data } = await q;
+      if (data && data.length > 0) setArticleBuffer(prev => [...prev, ...data]);
+    } catch { /* silent */ } finally {
+      prefetchingRef.current = false;
+    }
+  }, [selectedRegion, selectedCategory, selectedCountry, articles.length, articleBuffer.length, hasMore]);
+
+  // Auto-refill buffer when it drops below 15 articles.
+  useEffect(() => {
+    if (articleBuffer.length < 15 && !loading && !loadingMore && hasMore) {
+      prefetchIntoBuffer();
+    }
+  }, [articleBuffer.length, loading, loadingMore, hasMore, prefetchIntoBuffer]);
+
   const handleLoadMore = async () => {
     if (loading || loadingMore || !hasMore) return;
 
@@ -820,23 +858,25 @@ const Index = ({ user }: IndexProps) => {
 
   const allTabArticles = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) {
-      return articles;
-    }
-
-    return articles.filter((article) => {
-      const haystack = [
-        article.title,
-        article.snippet,
-        article.source_name,
-        article.source_country,
-        article.source_region,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(query);
-    });
+    const base = !query
+      ? articles
+      : articles.filter((article) => {
+          const haystack = [
+            article.title,
+            article.snippet,
+            article.source_name,
+            article.source_country,
+            article.source_region,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        });
+    // Surface articles with images first; within each group, newest-first order is preserved.
+    const withImg = base.filter(a => hasRealImage(a));
+    const noImg   = base.filter(a => !hasRealImage(a));
+    return [...withImg, ...noImg];
   }, [articles, searchQuery]);
 
   const favoriteArticles = useMemo(
