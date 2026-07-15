@@ -485,6 +485,7 @@ const Index = ({ user }: IndexProps) => {
         const regionPromises = regionTables.map(async (tableName) => {
           let query = (supabase.from(tableName as any) as any)
             .select("*", { count: 'exact' })
+            .not('image_url', 'is', null)
             .gte("published_at", sevenDaysAgo)
             .order("published_at", { ascending: false })
             .limit(PER_REGION_LIMIT);
@@ -583,6 +584,7 @@ const Index = ({ user }: IndexProps) => {
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         let query = (supabase.from(tableName as any) as any)
           .select("*", { count: 'exact' })
+          .not('image_url', 'is', null)
           .gte("published_at", sevenDaysAgo)
           .order("published_at", { ascending: false })
           .range(from, to);
@@ -625,6 +627,7 @@ const Index = ({ user }: IndexProps) => {
             // Fall back to fetching all articles without category filter
             const fallbackQuery = (supabase.from(tableName as any) as any)
               .select("*", { count: 'exact' })
+              .not('image_url', 'is', null)
               .order("published_at", { ascending: false })
               .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
 
@@ -820,6 +823,7 @@ const Index = ({ user }: IndexProps) => {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       let q = (supabase.from(tableName as any) as any)
         .select('*')
+        .not('image_url', 'is', null)
         .gte('published_at', sevenDaysAgo)
         .order('published_at', { ascending: false })
         .range(from, from + ARTICLES_PER_PAGE - 1);
