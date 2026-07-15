@@ -873,10 +873,8 @@ const Index = ({ user }: IndexProps) => {
             .toLowerCase();
           return haystack.includes(query);
         });
-    // Surface articles with images first; within each group, newest-first order is preserved.
-    const withImg = base.filter(a => hasRealImage(a));
-    const noImg   = base.filter(a => !hasRealImage(a));
-    return [...withImg, ...noImg];
+    // Only show articles that have a real image — no blank placeholder cards.
+    return base.filter(a => hasRealImage(a));
   }, [articles, searchQuery]);
 
   const favoriteArticles = useMemo(
