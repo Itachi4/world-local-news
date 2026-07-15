@@ -1,76 +1,68 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LogOut, Mail, Calendar, Pencil, Lock, Check, X } from "lucide-react";
+import { SiteHeader } from "@/components/feed/SiteHeader";
+import { SiteFooter } from "@/components/feed/SiteFooter";
 import { useToast } from "@/hooks/use-toast";
 
-interface UserProfileProps {
-  onLogout: () => void;
+const FIELD_STYLE: React.CSSProperties = {
+  width: "100%", height: 42, padding: "0 13px",
+  border: "1px solid hsl(var(--line-2))",
+  background: "hsl(var(--field))",
+  borderRadius: 4, outline: "none",
+  color: "hsl(var(--foreground))",
+  fontFamily: "inherit", fontSize: 14.5,
+  boxSizing: "border-box",
+};
+
+const SECTION_LABEL: React.CSSProperties = {
+  display: "block", fontSize: 12, fontWeight: 600,
+  color: "hsl(var(--muted-foreground))",
+  textTransform: "uppercase", letterSpacing: ".06em",
+  marginBottom: 8,
+};
+
+function getInitials(str: string): string {
+  return str.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
 }
 
-const UserProfile = ({ onLogout }: UserProfileProps) => {
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "short" });
+}
+
+const AccountPage = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [editingName, setEditingName] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [savingName, setSavingName] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
+
+  const [showPassForm, setShowPassForm] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
-    const getUser = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-        setNewName(user?.user_metadata?.full_name || "");
-      } catch (error) {
-        console.error("Error fetching user:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    getUser();
-  }, []);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { navigate("/auth"); return; }
+      setUser(user);
+      setDisplayName(user.user_metadata?.full_name || "");
+      setLoading(false);
+    });
+  }, [navigate]);
 
   const handleUpdateName = async () => {
-    if (!newName.trim()) {
-      toast({
-        title: "Name required",
-        description: "Please enter a display name.",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    if (!displayName.trim()) return;
     setSavingName(true);
     try {
-      const { data, error } = await supabase.auth.updateUser({
-        data: { full_name: newName.trim() },
-      });
-
+      const { data, error } = await supabase.auth.updateUser({ data: { full_name: displayName.trim() } });
       if (error) throw error;
-
       setUser(data.user);
-      setEditingName(false);
-      toast({
-        title: "Name updated",
-        description: "Your display name has been updated.",
-      });
-    } catch (error: any) {
-      console.error("Error updating name:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update name.",
-        variant: "destructive",
-      });
+      toast({ title: "Name updated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setSavingName(false);
     }
@@ -78,256 +70,252 @@ const UserProfile = ({ onLogout }: UserProfileProps) => {
 
   const handleUpdatePassword = async () => {
     if (newPassword.length < 6) {
-      toast({
-        title: "Password too short",
-        description: "Password must be at least 6 characters.",
-        variant: "destructive",
-      });
+      toast({ title: "Password too short", description: "Minimum 6 characters.", variant: "destructive" });
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      toast({
-        title: "Passwords don't match",
-        description: "Please make sure both passwords match.",
-        variant: "destructive",
-      });
+      toast({ title: "Passwords don't match", variant: "destructive" });
       return;
     }
-
     setSavingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-
-      setChangingPassword(false);
+      setShowPassForm(false);
       setNewPassword("");
       setConfirmPassword("");
-      toast({
-        title: "Password updated",
-        description: "Your password has been changed successfully.",
-      });
-    } catch (error: any) {
-      console.error("Error updating password:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update password.",
-        variant: "destructive",
-      });
+      toast({ title: "Password updated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setSavingPassword(false);
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-
-      toast({
-        title: "Logged out successfully",
-        description: "You have been logged out of your account.",
-      });
-
-      onLogout();
-    } catch (error: any) {
-      console.error("Logout error:", error);
-      toast({
-        title: "Error",
-        description: "Failed to log out. Please try again.",
-        variant: "destructive",
-      });
-    }
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
   };
 
   if (loading) {
     return (
-      <Card className="w-full max-w-md mx-auto">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        </CardContent>
-      </Card>
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "hsl(var(--background))" }}>
+        <div style={{ width: 32, height: 32, border: "2px solid hsl(var(--border))", borderTopColor: "hsl(var(--primary))", borderRadius: "50%", animation: "sn-spin .8s linear infinite" }} />
+      </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
+  const initials = getInitials(user.user_metadata?.full_name || user.email || "");
+  const memberSince = user.created_at ? formatDate(user.created_at) : "";
 
   return (
-    <Card className="w-full max-w-md mx-auto animate-fade-in">
-      <CardHeader className="text-center">
-        <div className="flex justify-center mb-4">
-          <Avatar className="w-20 h-20">
-            <AvatarImage src={user.user_metadata?.avatar_url} />
-            <AvatarFallback className="text-lg">
-              {getInitials(user.user_metadata?.full_name || user.email)}
-            </AvatarFallback>
-          </Avatar>
-        </div>
+    <div style={{ minHeight: "100vh", background: "hsl(var(--background))" }}>
+      <SiteHeader
+        user={user}
+        onLogin={() => navigate("/auth")}
+        onProfile={() => {}}
+        onOpenGlobe={() => navigate("/")}
+        searchOpen={false}
+        onToggleSearch={() => {}}
+        searchQuery=""
+        onSearchChange={() => {}}
+        onFontDown={() => {}}
+        onFontReset={() => {}}
+        onFontUp={() => {}}
+      />
 
-        {editingName ? (
-          <div className="flex items-center gap-2 justify-center">
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="max-w-[200px] h-9 text-center"
-              placeholder="Display name"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleUpdateName();
-                if (e.key === "Escape") {
-                  setEditingName(false);
-                  setNewName(user.user_metadata?.full_name || "");
-                }
-              }}
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-              onClick={handleUpdateName}
-              disabled={savingName}
-            >
-              <Check className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={() => {
-                setEditingName(false);
-                setNewName(user.user_metadata?.full_name || "");
-              }}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center gap-2">
-            <CardTitle className="text-xl">
-              {user.user_metadata?.full_name || "User"}
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-primary"
-              onClick={() => setEditingName(true)}
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        )}
+      <main style={{ maxWidth: 680, margin: "0 auto", padding: "46px 28px 80px" }}>
+        <h1
+          style={{
+            fontFamily: "'Newsreader', serif",
+            fontWeight: 600, fontSize: 32,
+            letterSpacing: "-.015em",
+            margin: "0 0 26px",
+            color: "hsl(var(--foreground))",
+          }}
+        >
+          Account
+        </h1>
 
-        <CardDescription>
-          Welcome to World Local News
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <Mail className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm">{user.email}</span>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm">
-              Member since {formatDate(user.created_at)}
-            </span>
+        {/* Profile row */}
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 18,
+            padding: 22,
+            background: "hsl(var(--card))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: 6, marginBottom: 18,
+          }}
+        >
+          <span
+            style={{
+              width: 64, height: 64, borderRadius: "50%",
+              background: "hsl(var(--primary))",
+              color: "#fff",
+              display: "grid", placeItems: "center",
+              fontFamily: "'Newsreader', serif",
+              fontWeight: 600, fontSize: 25,
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
+              {user.user_metadata?.full_name || "Account"}
+            </div>
+            <div style={{ fontSize: 13.5, color: "hsl(var(--muted-foreground))" }}>
+              {user.email}
+              {memberSince && ` · Member since ${memberSince}`}
+            </div>
           </div>
         </div>
 
-        {/* Change Password Section */}
-        <div className="pt-4 border-t">
-          {changingPassword ? (
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Change Password</Label>
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New password (min 6 characters)"
-                autoFocus
+        {/* Editable fields */}
+        <div
+          style={{
+            background: "hsl(var(--card))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: 6, overflow: "hidden", marginBottom: 18,
+          }}
+        >
+          {/* Display name */}
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid hsl(var(--border))" }}>
+            <label style={SECTION_LABEL}>Display name</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleUpdateName()}
+                style={{ ...FIELD_STYLE, flex: 1 }}
+                placeholder="Your name"
               />
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleUpdatePassword();
+              <button
+                onClick={handleUpdateName}
+                disabled={savingName}
+                style={{
+                  height: 42, padding: "0 16px",
+                  border: "1px solid hsl(var(--border))",
+                  background: "transparent",
+                  color: "hsl(var(--foreground))",
+                  borderRadius: 4, fontFamily: "inherit",
+                  fontSize: 13, fontWeight: 600,
+                  cursor: savingName ? "not-allowed" : "pointer",
+                  opacity: savingName ? 0.6 : 1,
+                  whiteSpace: "nowrap",
                 }}
-              />
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleUpdatePassword}
-                  disabled={savingPassword || !newPassword || !confirmPassword}
-                  className="flex-1"
-                  size="sm"
-                >
-                  {savingPassword ? "Saving..." : "Update Password"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setChangingPassword(false);
-                    setNewPassword("");
-                    setConfirmPassword("");
+              >
+                {savingName ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+
+          {/* Email (readonly) */}
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid hsl(var(--border))" }}>
+            <label style={SECTION_LABEL}>Email</label>
+            <input
+              value={user.email || ""}
+              readOnly
+              style={{ ...FIELD_STYLE, opacity: 0.65, cursor: "default" }}
+            />
+          </div>
+
+          {/* Password */}
+          <div style={{ padding: "16px 20px" }}>
+            {showPassForm ? (
+              <div>
+                <label style={SECTION_LABEL}>Change password</label>
+                <input
+                  type="password"
+                  placeholder="New password (min 6 characters)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={{ ...FIELD_STYLE, marginBottom: 8 }}
+                  autoFocus
+                />
+                <input
+                  type="password"
+                  placeholder="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUpdatePassword()}
+                  style={{ ...FIELD_STYLE, marginBottom: 12 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={handleUpdatePassword}
+                    disabled={savingPassword}
+                    style={{
+                      height: 36, padding: "0 16px",
+                      border: 0, background: "hsl(var(--primary))",
+                      color: "#fff", borderRadius: 3,
+                      fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+                      cursor: savingPassword ? "not-allowed" : "pointer",
+                      opacity: savingPassword ? 0.7 : 1,
+                    }}
+                  >
+                    {savingPassword ? "Saving…" : "Update password"}
+                  </button>
+                  <button
+                    onClick={() => { setShowPassForm(false); setNewPassword(""); setConfirmPassword(""); }}
+                    style={{
+                      height: 36, padding: "0 14px",
+                      border: "1px solid hsl(var(--border))",
+                      background: "transparent",
+                      color: "hsl(var(--foreground))",
+                      borderRadius: 3, fontFamily: "inherit",
+                      fontSize: 13, cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "hsl(var(--foreground))" }}>Password</div>
+                  <div style={{ fontSize: 12.5, color: "hsl(var(--muted-foreground))" }}>••••••••</div>
+                </div>
+                <button
+                  onClick={() => setShowPassForm(true)}
+                  style={{
+                    height: 36, padding: "0 14px",
+                    border: "1px solid hsl(var(--line-2))",
+                    background: "transparent",
+                    color: "hsl(var(--foreground))",
+                    borderRadius: 3, fontFamily: "inherit",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
                   }}
                 >
-                  Cancel
-                </Button>
+                  Change password
+                </button>
               </div>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => setChangingPassword(true)}
-              className="w-full"
-            >
-              <Lock className="w-4 h-4 mr-2" />
-              Change Password
-            </Button>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="pt-2">
-          <Button
-            variant="outline"
-            onClick={handleLogout}
-            className="w-full"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        {/* Sign out */}
+        <button
+          onClick={handleSignOut}
+          style={{
+            height: 44, padding: "0 20px",
+            border: "1px solid hsl(var(--primary))",
+            background: "transparent",
+            color: "hsl(var(--accent-ink))",
+            borderRadius: 4, fontFamily: "inherit",
+            fontSize: 14, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Sign out
+        </button>
+      </main>
+
+      <SiteFooter />
+    </div>
   );
 };
 
-export default UserProfile;
+export default AccountPage;

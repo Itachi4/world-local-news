@@ -105,7 +105,7 @@ export const RegisterForm = ({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
               <p>
                 You should receive a confirmation email from{" "}
                 <span className="font-mono font-semibold text-foreground">
-                  snew@snewweb.org
+                  verify@snewweb.org
                 </span>
               </p>
               <p>

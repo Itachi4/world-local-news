@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, staging]
   push:
-    branches: [staging]
+    branches: [main, staging]
 
 jobs:
   build-and-lint:
@@ -26,10 +26,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build (staging creds)
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
         env:
-          # Use staging creds in CI so the build-time guard passes.
-          # These are the public anon key — safe as a CI secret.
           VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
         run: npm run build

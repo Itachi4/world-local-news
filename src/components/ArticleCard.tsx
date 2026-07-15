@@ -1,105 +1,57 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ExternalLink, Heart, StickyNote, Share2, Copy, Send, Linkedin } from "lucide-react";
 import { useState } from "react";
+import { ExternalLink, Heart, StickyNote, Share2, Copy, Send, Linkedin } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { PublicNoteModal } from "./PublicNoteModal";
 import { useToast } from "@/hooks/use-toast";
+import { regionColor } from "@/lib/regionColor";
+import { proxyImage } from "@/lib/imageProxy";
+import { isBrandingImage, isAiImage } from "@/lib/brandImage";
+import { SnewMark } from "./SnewMark";
 
-// Left-border accent colour keyed by region
-const regionAccent: Record<string, string> = {
-  Asia:          'border-l-amber-400',
-  Europe:        'border-l-emerald-400',
-  'North America': 'border-l-blue-400',
-  'South America': 'border-l-teal-400',
-  'Middle East': 'border-l-orange-400',
-  Africa:        'border-l-rose-400',
-  Oceania:       'border-l-cyan-400',
-};
+// ── Text helpers ──────────────────────────────────────────────────────────────
 
-// Gradient background for the placeholder shown when no image is available.
-// Keyed by region to give each card a recognisable regional colour.
-const regionPlaceholder: Record<string, string> = {
-  Asia:           'from-amber-800   to-amber-950',
-  Europe:         'from-emerald-800 to-emerald-950',
-  'North America':'from-blue-800    to-blue-950',
-  'South America':'from-teal-800    to-teal-950',
-  'Middle East':  'from-orange-800  to-orange-950',
-  Africa:         'from-rose-800    to-rose-950',
-  Oceania:        'from-cyan-800    to-cyan-950',
-};
-
-// Decode common HTML entities from feeds
 const decodeEntities = (str: string) => {
   if (!str) return "";
   return str
     .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;|&#x27;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;|&#x27;/g, "'")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
     .replace(/&nbsp;/g, " ");
 };
 
-// Strip any HTML tags and collapse whitespace
-const stripHtml = (str: string) => {
-  if (!str) return "";
-  return str
-    .replace(/<[^>]*>/g, " ") // remove tags
-    .replace(/\s+/g, " ") // collapse whitespace
-    .trim();
-};
+const stripHtml = (str: string) =>
+  str ? str.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : "";
 
-// Truncate at first &nbsp; or U+00A0 — content after that is usually source name/junk
 const truncateAtNbsp = (str: string) => {
   if (!str) return "";
-  const atLiteral = str.indexOf("&nbsp;");
-  if (atLiteral !== -1) return str.slice(0, atLiteral).trim();
-  const atChar = str.indexOf("\u00A0");
-  if (atChar !== -1) return str.slice(0, atChar).trim();
+  const a = str.indexOf("&nbsp;");
+  if (a !== -1) return str.slice(0, a).trim();
+  const b = str.indexOf(" ");
+  if (b !== -1) return str.slice(0, b).trim();
   return str;
 };
 
-// Decode and sanitize description/snippet text safely for display
 const cleanSnippet = (str: string) => stripHtml(decodeEntities(truncateAtNbsp(str)));
 
-// Prefer canonical article URL over Google News redirect
 const getDisplayUrl = (input: string) => {
   if (!input) return input;
   try {
-    // First, try to extract canonical URL from Google News redirect
     const urlParamMatch = input.match(/[?&]url=([^&]+)/);
     if (urlParamMatch) {
       const candidate = decodeURIComponent(urlParamMatch[1]);
-      if (candidate && !candidate.includes('news.google.com')) {
-        return candidate;
-      }
+      if (candidate && !candidate.includes("news.google.com")) return candidate;
     }
-    
-    // If it's a Google News redirect URL, try to extract the actual URL
-    if (input.includes('news.google.com/articles/')) {
-      const articleMatch = input.match(/news\.google\.com\/articles\/([^?]+)/);
-      if (articleMatch) {
-        // This is a Google News internal article, return the original URL
-        return input;
-      }
-    }
-    
-    // If it's a Google News redirect with different pattern
-    if (input.includes('news.google.com') && input.includes('url=')) {
+    if (input.includes("news.google.com") && input.includes("url=")) {
       const urlMatch = input.match(/url=([^&]+)/);
       if (urlMatch) {
-        const decodedUrl = decodeURIComponent(urlMatch[1]);
-        if (decodedUrl && !decodedUrl.includes('news.google.com')) {
-          return decodedUrl;
-        }
+        const decoded = decodeURIComponent(urlMatch[1]);
+        if (decoded && !decoded.includes("news.google.com")) return decoded;
       }
     }
-  } catch (error) {
-    console.warn('Error processing URL:', error);
+  } catch {
+    // ignore
   }
   return input;
 };
@@ -107,12 +59,12 @@ const getDisplayUrl = (input: string) => {
 const isSafeExternalUrl = (input?: string | null) => {
   if (!input) return false;
   try {
-    const parsed = new URL(input);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
+    const p = new URL(input).protocol;
+    return p === "http:" || p === "https:";
+  } catch { return false; }
 };
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ArticleCardProps {
   title: string;
@@ -131,28 +83,19 @@ interface ArticleCardProps {
   publicNotes?: Array<{ text: string; userId: string }>;
   onToggleFavorite?: (articleId: string) => void;
   onOpenNotes?: (articleId: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
-  /** When set, opening the article (title/image) without being logged in will call this instead of navigating */
   onRequestLogin?: () => void;
+  /** When true, renders with larger image and headline (for the lead position). */
+  isLead?: boolean;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export const ArticleCard = ({
-  title,
-  snippet,
-  url,
-  sourceName,
-  sourceCountry,
-  sourceRegion,
-  publishedAt,
-  imageUrl,
-  articleId,
-  userId,
-  isFavorited = false,
-  noteText,
-  noteIsPublic = false,
-  publicNotes = [],
-  onToggleFavorite,
-  onOpenNotes,
-  onRequestLogin,
+  title, snippet, url, sourceName, sourceCountry, sourceRegion,
+  publishedAt, imageUrl, articleId, userId,
+  isFavorited = false, noteText, noteIsPublic = false,
+  publicNotes = [], onToggleFavorite, onOpenNotes, onRequestLogin,
+  isLead = false,
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
   const articleUrl = isSafeExternalUrl(displayUrl) ? displayUrl : isSafeExternalUrl(url) ? url : null;
@@ -161,365 +104,285 @@ export const ArticleCard = ({
   const requireLoginToOpen = onRequestLogin && !userId;
   const { toast } = useToast();
 
-  const accentBorder = regionAccent[sourceRegion] ?? 'border-l-primary/40';
+  // Show image only when DB has a non-branding URL and it loaded without error.
+  // AI illustrations are pre-generated by the backend backfill and stored in image_url.
+  const hasImage = !!imageUrl && !isBrandingImage(imageUrl) && !imgError;
+
+  const accent = regionColor(sourceRegion);
 
   const handleArticleClick = (e: React.MouseEvent) => {
-    if (requireLoginToOpen) {
-      e.preventDefault();
-      onRequestLogin?.();
-      return;
-    }
-    if (!articleUrl) {
-      e.preventDefault();
-    }
+    if (requireLoginToOpen) { e.preventDefault(); onRequestLogin?.(); return; }
+    if (!articleUrl) e.preventDefault();
   };
 
   const shareText = `${decodeEntities(title)} (${sourceName})`;
 
-  const openShareWindow = (shareUrl: string) => {
+  const openShareWindow = (shareUrl: string) =>
     window.open(shareUrl, "_blank", "noopener,noreferrer");
-  };
 
   const handleNativeShare = async () => {
     if (!articleUrl) {
-      toast({
-        title: "Sharing unavailable",
-        description: "This article does not have a valid external URL.",
-        variant: "destructive",
-      });
+      toast({ title: "Sharing unavailable", description: "No valid URL for this article.", variant: "destructive" });
       return;
     }
-
     if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({
-          title: decodeEntities(title),
-          text: shareText,
-          url: articleUrl,
-        });
-        return;
-      } catch {
-        // User cancelled or browser declined share; silently fall through to copy.
-      }
+      try { await navigator.share({ title: decodeEntities(title), text: shareText, url: articleUrl }); return; } catch { /* user cancelled share dialog */ }
     }
-
     try {
       await navigator.clipboard.writeText(articleUrl);
-      toast({
-        title: "Link copied",
-        description: "Article link copied to your clipboard.",
-      });
+      toast({ title: "Link copied", description: "Article link copied to your clipboard." });
     } catch {
-      toast({
-        title: "Sharing unavailable",
-        description: "Unable to copy link from this browser.",
-        variant: "destructive",
-      });
+      toast({ title: "Sharing unavailable", description: "Unable to copy link.", variant: "destructive" });
     }
   };
 
   const handleSocialShare = (platform: "x" | "linkedin") => {
     if (!articleUrl) {
-      toast({
-        title: "Sharing unavailable",
-        description: "This article does not have a valid external URL.",
-        variant: "destructive",
-      });
+      toast({ title: "Sharing unavailable", description: "No valid URL for this article.", variant: "destructive" });
       return;
     }
-
     if (platform === "x") {
-      openShareWindow(
-        `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(articleUrl)}`
-      );
-      return;
+      openShareWindow(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(articleUrl)}`);
+    } else {
+      openShareWindow(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`);
     }
-
-    openShareWindow(
-      `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
-    );
   };
 
-  return (
-    <Card className={`group h-full flex flex-col hover:shadow-2xl transition-all duration-500 ease-out border-border/50 hover:border-primary/30 hover:-translate-y-2 bg-card relative overflow-hidden animate-fade-in hover-lift border-l-4 ${accentBorder}`}>
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+  const isPoster = isLead && !hasImage;
+  // Use full image height when there's an image; smaller backdrop when logo-only.
+  const imgHeight = hasImage ? (isLead ? 224 : 152) : (isLead ? 96 : 72);
+  const titleSize = hasImage ? (isLead ? 20 : 15.5) : (isLead ? 28 : 21);
+  const snippetLines = hasImage ? (isLead ? 4 : 3) : (isLead ? 6 : 5);
 
-      {/* Article thumbnail — real photo or branded placeholder */}
-      {imageUrl && !imgError ? (
-        <a
-          href={articleUrl || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block overflow-hidden"
+  return (
+    <article
+      style={{
+        background: "hsl(var(--card))",
+        border: "1px solid hsl(var(--border))",
+        borderLeft: `3px solid ${accent}`,
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        transition: "box-shadow .15s ease",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px hsl(var(--shadow))"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+    >
+      {/* Thumbnail — real photo, AI illustration, or branded Snew-mark backdrop */}
+      {hasImage ? (
+        <a href={articleUrl || "#"} target="_blank" rel="noopener noreferrer"
+          style={{
+            display: "block", overflow: "hidden", position: "relative",
+            // Lead image grows to fill the column height; grid cards use a fixed height.
+            ...(isLead
+              ? { flex: "1 0 0", minHeight: 200 }
+              : { flexShrink: 0, height: imgHeight }),
+          }}
           onClick={handleArticleClick}
-          aria-label={`Open article image: ${decodeEntities(title)}`}
+          aria-label={`Open: ${decodeEntities(title)}`}
         >
           <img
-            src={imageUrl}
+            src={proxyImage(imageUrl, { width: isLead ? 900 : 540 }) ?? undefined}
             alt={title}
             onError={() => setImgError(true)}
-            className="w-full h-40 object-cover transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
-            decoding="async"
+            referrerPolicy="no-referrer"
+            style={{ width: "100%", height: isLead ? "100%" : imgHeight, objectFit: "cover", display: "block" }}
+            loading="lazy" decoding="async"
           />
+          {/* AI illustration label — shown only when the image was AI-generated */}
+          {isAiImage(imageUrl) && (
+            <span style={{
+              position: "absolute", bottom: 6, left: 8,
+              fontFamily: '"IBM Plex Mono", monospace',
+              fontSize: 9, letterSpacing: "0.08em",
+              color: "rgba(255,255,255,0.82)",
+              background: "rgba(0,0,0,0.45)",
+              padding: "2px 6px", borderRadius: 3,
+              userSelect: "none", pointerEvents: "none",
+            }}>AI illustration</span>
+          )}
         </a>
       ) : (
+        /* Snew-mark backdrop — branded "no photo" treatment for lead and grid cards */
         <div
-          className={`w-full h-40 flex flex-col items-center justify-center gap-1 bg-gradient-to-br ${regionPlaceholder[sourceRegion] ?? 'from-slate-700 to-slate-900'} select-none`}
           aria-hidden="true"
+          style={{
+            height: imgHeight,
+            flexShrink: 0,
+            background: `color-mix(in srgb, ${accent} 16%, hsl(var(--card)))`,
+            borderBottom: `1px solid color-mix(in srgb, ${accent} 28%, transparent)`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            position: "relative",
+            overflow: "hidden",
+          }}
         >
-          <span className="text-white/70 text-[11px] font-semibold tracking-widest uppercase">{sourceRegion}</span>
-          <span className="text-white/40 text-[10px] text-center px-6 truncate max-w-full">{sourceName}</span>
+          <SnewMark size={isPoster ? 96 : 40} />
         </div>
       )}
 
-      <CardHeader className="pb-3 relative z-10">
-        <div className="flex gap-2 flex-wrap mb-3">
-          <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 font-medium hover:bg-primary/20 transition-colors cursor-default animate-scale-in">
-            {sourceRegion}
-          </Badge>
-          <Badge variant="outline" className="border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors cursor-default animate-scale-in" style={{ animationDelay: '0.1s' }}>
-            {sourceCountry}
-          </Badge>
+      {/* Body — lead with image: fixed height (image fills remaining space); everything else: flex-grow */}
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", flex: isLead && hasImage ? "0 0 auto" : 1, gap: 10 }}>
+        {/* Region / country pills */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em",
+            padding: "2px 8px", borderRadius: 99,
+            background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+            color: accent, border: `1px solid color-mix(in srgb, ${accent} 25%, transparent)`,
+          }}>{sourceRegion}</span>
+          <span style={{
+            fontSize: 10.5, fontWeight: 500, padding: "2px 8px", borderRadius: 99,
+            border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))",
+          }}>{sourceCountry}</span>
         </div>
-        <CardTitle className="text-lg leading-tight font-bold">
-          <a 
-            href={articleUrl || "#"} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="group-hover:text-primary transition-all duration-300 flex items-start gap-2 hover:gap-3 hover:scale-[1.02] transition-bounce"
+
+        {/* Headline */}
+        <h3 style={{ margin: 0, fontFamily: "Newsreader, serif", fontSize: titleSize, fontWeight: 600, lineHeight: 1.35 }}>
+          <a
+            href={articleUrl || "#"} target="_blank" rel="noopener noreferrer"
             onClick={handleArticleClick}
-            aria-label={`Open article source: ${decodeEntities(title)}`}
+            style={{ color: "hsl(var(--foreground))", textDecoration: "none", display: "flex", alignItems: "flex-start", gap: 6 }}
           >
-            <span className="flex-1">{decodeEntities(title)}</span>
-            <ExternalLink className="w-4 h-4 flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12 group-hover:scale-110" />
+            <span style={{ flex: 1 }}>{decodeEntities(title)}</span>
+            <ExternalLink size={13} style={{ flexShrink: 0, marginTop: 3, color: "hsl(var(--muted-foreground))", opacity: 0.5 }} />
           </a>
-        </CardTitle>
-      </CardHeader>
-      
-      <CardContent className="flex-1 flex flex-col relative z-10">
-        <CardDescription className="line-clamp-3 text-sm leading-relaxed mb-4 flex-1 text-muted-foreground/90 group-hover:text-muted-foreground transition-colors">
+        </h3>
+
+        {/* Snippet */}
+        <p style={{
+          margin: 0, fontSize: 13, color: "hsl(var(--muted-foreground))", lineHeight: 1.55,
+          display: "-webkit-box", WebkitLineClamp: snippetLines,
+          WebkitBoxOrient: "vertical", overflow: "hidden", flex: 1,
+        }}>
           {cleanSnippet(snippet)}
-        </CardDescription>
-        <div className="flex items-center justify-between text-xs text-muted-foreground pt-4 border-t border-border/50 group-hover:border-primary/20 transition-colors">
-          <span className="font-semibold text-foreground/70 group-hover:text-foreground transition-colors">{sourceName}</span>
+        </p>
+
+        {/* Dateline */}
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          paddingTop: 8, borderTop: "1px solid hsl(var(--border))",
+          fontFamily: '"IBM Plex Mono", monospace', fontSize: 10.5,
+        }}>
+          <span style={{ fontWeight: 600, color: "hsl(var(--foreground))", opacity: 0.65 }}>{sourceName}</span>
           {publishedAt && (
-            <span className="flex items-center gap-1 bg-muted/50 px-2 py-1 rounded-md group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-              {new Date(publishedAt).toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric',
-                year: 'numeric'
-              })}
+            <span style={{ color: "hsl(var(--muted-foreground))" }}>
+              {new Date(publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
             </span>
           )}
         </div>
-        
-        {/* Public Notes from Other Users */}
-        {publicNotes && publicNotes.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-border/30">
-            <div className="text-xs font-semibold text-muted-foreground mb-2">Public Notes:</div>
-            <div className="space-y-2">
+
+        {/* Public notes from other users */}
+        {publicNotes.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted-foreground))", marginBottom: 6 }}>Public Notes:</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {publicNotes.map((note, idx) => {
-                const isLongNote = note.text.length > 100;
-                const displayText = isLongNote ? note.text.substring(0, 100) + "..." : note.text;
-                
+                const isLong = note.text.length > 100;
                 return (
                   <button
-                    key={idx}
-                    type="button"
-                    className={`w-full text-left text-xs bg-muted/50 p-2 rounded border-l-2 border-primary/30 ${
-                      isLongNote ? "cursor-pointer hover:bg-muted transition-colors" : "cursor-default"
-                    }`}
-                    onClick={() => isLongNote && setSelectedNote(note)}
-                    title={isLongNote ? "Click to view full note" : undefined}
-                    aria-label={isLongNote ? "Open full public note" : "Public note"}
-                    disabled={!isLongNote}
+                    key={idx} type="button"
+                    onClick={() => isLong && setSelectedNote(note)}
+                    disabled={!isLong}
+                    style={{
+                      textAlign: "left", fontSize: 11.5,
+                      background: "hsl(var(--secondary))", border: 0,
+                      borderLeft: `2px solid hsl(var(--primary))`,
+                      padding: "6px 10px", borderRadius: 2,
+                      cursor: isLong ? "pointer" : "default",
+                      color: "hsl(var(--foreground))",
+                    }}
                   >
-                    <p className="text-foreground/80">{displayText}</p>
-                    {isLongNote && (
-                      <p className="text-xs text-primary mt-1 font-medium">Click to read more...</p>
-                    )}
+                    {isLong ? note.text.slice(0, 100) + "…" : note.text}
+                    {isLong && <span style={{ display: "block", fontSize: 10.5, color: "hsl(var(--primary))", marginTop: 3 }}>Read more…</span>}
                   </button>
                 );
               })}
             </div>
           </div>
         )}
-        
-        {/* Action Buttons */}
+
+        {/* Action buttons */}
         {articleId && (
-          <div className="mt-3 pt-3 border-t border-border/30">
-            <div className="flex items-center justify-end gap-2">
+          <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: 8, marginTop: 2 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 2 }}>
               <TooltipProvider>
-              {/* Share Buttons */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleNativeShare}
-                    className="h-10 w-10 p-0 hover:bg-emerald-50 hover:text-emerald-600 transition-all duration-200 text-muted-foreground"
-                    aria-label="Share article"
-                  >
-                    <Share2 className="w-4 h-4" />
+                <Tooltip><TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleNativeShare} aria-label="Share article"
+                    className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground">
+                    <Share2 size={14} />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Share or copy link</p>
-                </TooltipContent>
-              </Tooltip>
+                </TooltipTrigger><TooltipContent><p>Share or copy link</p></TooltipContent></Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSocialShare("x")}
-                    className="h-10 w-10 p-0 hover:bg-sky-50 hover:text-sky-600 transition-all duration-200 text-muted-foreground"
-                    aria-label="Share to X"
-                  >
-                    <Send className="w-4 h-4" />
+                <Tooltip><TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => handleSocialShare("x")} aria-label="Share to X"
+                    className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground">
+                    <Send size={14} />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Share to X</p>
-                </TooltipContent>
-              </Tooltip>
+                </TooltipTrigger><TooltipContent><p>Share to X</p></TooltipContent></Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSocialShare("linkedin")}
-                    className="h-10 w-10 p-0 hover:bg-blue-50 hover:text-blue-700 transition-all duration-200 text-muted-foreground"
-                    aria-label="Share to LinkedIn"
-                  >
-                    <Linkedin className="w-4 h-4" />
+                <Tooltip><TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => handleSocialShare("linkedin")} aria-label="Share to LinkedIn"
+                    className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground">
+                    <Linkedin size={14} />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Share to LinkedIn</p>
-                </TooltipContent>
-              </Tooltip>
+                </TooltipTrigger><TooltipContent><p>Share to LinkedIn</p></TooltipContent></Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                <Tooltip><TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" aria-label="Copy link"
+                    className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
                     onClick={async () => {
-                      if (!articleUrl) {
-                        toast({
-                          title: "Copy unavailable",
-                          description: "This article does not have a valid external URL.",
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-                      try {
-                        await navigator.clipboard.writeText(articleUrl);
-                        toast({
-                          title: "Copied",
-                          description: "Article URL copied to clipboard.",
-                        });
-                      } catch {
-                        toast({
-                          title: "Copy unavailable",
-                          description: "Could not copy the article URL.",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    className="h-10 w-10 p-0 hover:bg-slate-100 hover:text-slate-800 transition-all duration-200 text-muted-foreground"
-                    aria-label="Copy article link"
-                  >
-                    <Copy className="w-4 h-4" />
+                      if (!articleUrl) { toast({ title: "Copy unavailable", description: "No valid URL.", variant: "destructive" }); return; }
+                      try { await navigator.clipboard.writeText(articleUrl); toast({ title: "Copied", description: "Article URL copied." }); }
+                      catch { toast({ title: "Copy unavailable", description: "Could not copy URL.", variant: "destructive" }); }
+                    }}>
+                    <Copy size={14} />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Copy link</p>
-                </TooltipContent>
-              </Tooltip>
+                </TooltipTrigger><TooltipContent><p>Copy link</p></TooltipContent></Tooltip>
 
-              {userId && (
-                <>
-                  {/* Favorite Button */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                {userId && (
+                  <>
+                    <Tooltip><TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm"
                         onClick={() => onToggleFavorite?.(articleId)}
-                        className={`h-10 w-10 p-0 hover:bg-red-50 hover:text-red-500 transition-all duration-200 ${
-                          isFavorited
-                            ? "text-red-500 hover:text-red-600"
-                            : "text-muted-foreground hover:text-red-500"
-                        }`}
                         aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
-                      >
-                        <Heart
-                          className={`w-4 h-4 transition-all duration-200 ${
-                            isFavorited
-                              ? "fill-current scale-110"
-                              : "hover:scale-110"
-                          }`}
-                        />
+                        className={`h-9 w-9 p-0 transition-colors ${isFavorited ? "text-red-500 hover:text-red-600" : "text-muted-foreground hover:text-red-500"}`}>
+                        <Heart size={14} className={isFavorited ? "fill-current" : ""} />
                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{isFavorited ? "Remove from Favorites" : "Add to Favorites"}</p>
-                    </TooltipContent>
-                  </Tooltip>
+                    </TooltipTrigger><TooltipContent><p>{isFavorited ? "Remove from Favorites" : "Add to Favorites"}</p></TooltipContent></Tooltip>
 
-                  {/* Notes Button */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                    <Tooltip><TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm"
                         onClick={() => onOpenNotes?.(articleId, title, noteText, noteIsPublic)}
-                        className="h-10 w-10 p-0 hover:bg-blue-50 hover:text-blue-500 transition-all duration-200 text-muted-foreground hover:text-blue-500 relative"
                         aria-label={noteText ? "Edit note" : "Add note"}
-                      >
-                        <StickyNote className="w-4 h-4 hover:scale-110 transition-transform duration-200" />
-                        {noteText && (
-                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                        )}
+                        className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground relative">
+                        <StickyNote size={14} />
+                        {noteText && <span style={{ position: "absolute", top: 1, right: 1, width: 7, height: 7, borderRadius: "50%", background: "hsl(var(--primary))" }} />}
                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{noteText ? "Edit Note" : "Add Note"}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </>
-              )}
-            </TooltipProvider>
-          </div>
-          {!userId && (
-            <div className="text-xs mt-2">
-              <button type="button" onClick={onRequestLogin} className="text-muted-foreground hover:text-primary underline">
-                Please log in to use favorites and notes
-              </button>
+                    </TooltipTrigger><TooltipContent><p>{noteText ? "Edit Note" : "Add Note"}</p></TooltipContent></Tooltip>
+                  </>
+                )}
+              </TooltipProvider>
             </div>
-          )}
+            {!userId && onRequestLogin && (
+              <p style={{ fontSize: 11, marginTop: 4, textAlign: "center" }}>
+                <button type="button" onClick={onRequestLogin}
+                  style={{ color: "hsl(var(--muted-foreground))", textDecoration: "underline", border: 0, background: "none", cursor: "pointer", fontSize: 11 }}>
+                  Log in to use favorites and notes
+                </button>
+              </p>
+            )}
           </div>
         )}
-      </CardContent>
-      
-      {/* Hover effect overlay */}
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-      
-      {/* Public Note Modal */}
+      </div>
+
       {selectedNote && (
-        <PublicNoteModal
-          isOpen={!!selectedNote}
-          onClose={() => setSelectedNote(null)}
-          noteText={selectedNote.text}
-          userId={selectedNote.userId}
-        />
+        <PublicNoteModal isOpen={!!selectedNote} onClose={() => setSelectedNote(null)}
+          noteText={selectedNote.text} userId={selectedNote.userId} />
       )}
-    </Card>
+    </article>
   );
 };

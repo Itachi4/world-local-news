@@ -1,0 +1,25 @@
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/**'
+          - 'index.html'
+          - 'tailwind.config.ts'
+          - 'vite.config.ts'
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: 'supabase/**'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: '.github/**'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'package-lock.json'
+
+design:
+  - changed-files:
+      - any-glob-to-any-file: 'design/**'

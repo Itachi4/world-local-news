@@ -1,22 +1,27 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ArticleCard } from "@/components/ArticleCard";
 import ArticleNotesModal from "@/components/ArticleNotesModal";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, RefreshCw, User, LogIn, Globe, Heart, FileText, Video, Cpu, DollarSign, Building2, Palette, Trophy, Plane, Church, X, MailCheck, Type } from "lucide-react";
+import { LogIn, FileText, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AnalysisEditor } from "@/components/AnalysisEditor";
 import { UserSidebar } from "@/components/UserSidebar";
 import { UserContentViewer } from "@/components/UserContentViewer";
 import InteractiveGlobeView from "@/components/InteractiveGlobeView";
 import { COUNTRIES_BY_REGION, REGION_OPTIONS } from "@/lib/countryMap";
-import { Link } from "react-router-dom";
+import { SiteHeader } from "@/components/feed/SiteHeader";
+import { isBrandingImage } from "@/lib/brandImage";
+import { CategoryTabs } from "@/components/feed/CategoryTabs";
+import { FilterBar } from "@/components/feed/FilterBar";
+import { FeedTabs } from "@/components/feed/FeedTabs";
+import { LeadStory } from "@/components/feed/LeadStory";
+import { ArticleGrid } from "@/components/feed/ArticleGrid";
+import { DigestSection } from "@/components/feed/DigestSection";
+import { SiteFooter } from "@/components/feed/SiteFooter";
 
 // Helper function to get table name for a region
 function getTableNameForRegion(region: string): string | null {
@@ -32,26 +37,53 @@ function getTableNameForRegion(region: string): string | null {
 }
 
 const categories = [
-  { value: "general", label: "General", icon: Globe },
-  { value: "tech-ai", label: "Tech & AI", icon: Cpu },
-  { value: "business-finance", label: "Business & Finance", icon: DollarSign },
-  { value: "politics", label: "Politics", icon: Building2 },
-  { value: "arts-entertainment-fashion", label: "Arts, Entertainment & Fashion", icon: Palette },
-  { value: "sports-games", label: "Sports & Games", icon: Trophy },
-  { value: "travel-leisure", label: "Travel & Leisure", icon: Plane },
-  { value: "religion-spirituality", label: "Religion & Spirituality", icon: Church },
+  { value: "general",                    label: "General"                      },
+  { value: "tech-ai",                    label: "Tech & AI"                    },
+  { value: "business-finance",           label: "Business & Finance"           },
+  { value: "politics",                   label: "Politics"                     },
+  { value: "arts-entertainment-fashion", label: "Arts, Entertainment & Fashion" },
+  { value: "sports-games",               label: "Sports & Games"               },
+  { value: "travel-leisure",             label: "Travel & Leisure"             },
+  { value: "religion-spirituality",      label: "Religion & Spirituality"      },
 ];
 
 const FONT_SCALE_STEPS = [90, 100, 112];
 
-interface IndexProps {
-  user: any;
-  onLogin: () => void;
-  onProfile: () => void;
+// ── Lead promotion ────────────────────────────────────────────────────────────
+// Returns true when an article has a real content image (not a Google branding logo).
+function hasRealImage(article: any): boolean {
+  const url: string = article.image_url;
+  if (!url) return false;
+  return !isBrandingImage(url);
 }
 
-const Index = ({ user, onLogin, onProfile }: IndexProps) => {
+// Promotes up to 3 image-having articles to the first 3 positions (lead +
+// secondaries) so the lead card always has a photo when one exists anywhere in
+// the feed. Order of all other articles is preserved.
+function promoteImageLead(articles: any[]): any[] {
+  if (articles.length < 3) return articles;
+  const result = [...articles];
+  let filled = 0;
+  for (let i = filled; i < result.length && filled < 3; i++) {
+    if (hasRealImage(result[i])) {
+      if (i !== filled) {
+        const [item] = result.splice(i, 1);
+        result.splice(filled, 0, item);
+      }
+      filled++;
+    }
+  }
+  return result;
+}
+
+interface IndexProps {
+  user: any;
+}
+
+const Index = ({ user }: IndexProps) => {
+  const navigate = useNavigate();
   const [articles, setArticles] = useState<any[]>([]);
+  const [articleBuffer, setArticleBuffer] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>("general");
   const [selectedRegion, setSelectedRegion] = useState("all");
@@ -69,11 +101,13 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   const [publicNotes, setPublicNotes] = useState<Map<string, Array<{ text: string; userId: string }>>>(new Map());
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [fontScale, setFontScale] = useState(100);
   const [digestEmail, setDigestEmail] = useState("");
   const [digestFrequency, setDigestFrequency] = useState<"daily" | "weekly">("daily");
   const [digestCategories, setDigestCategories] = useState<string[]>(["general"]);
   const [subscribingDigest, setSubscribingDigest] = useState(false);
+  const [digestSubscribed, setDigestSubscribed] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedUserName, setSelectedUserName] = useState<string>("");
   const [editingAnalysis, setEditingAnalysis] = useState<any | null>(null);
@@ -426,6 +460,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     } else {
       setLoading(true);
       setCurrentPage(1);
+      setArticleBuffer([]);
     }
 
     try {
@@ -534,12 +569,16 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         }
 
         // For specific region: Use standard query
+        // Page 1: pre-fetch 3× to fill buffer; subsequent pages: fetch 1× to append
+        const fetchCount = page === 1 ? 3 * ARTICLES_PER_PAGE : ARTICLES_PER_PAGE;
+        const from = page === 1 ? 0 : articles.length;
+        const to = from + fetchCount - 1;
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         let query = (supabase.from(tableName as any) as any)
           .select("*", { count: 'exact' })
           .gte("published_at", sevenDaysAgo)
           .order("published_at", { ascending: false })
-          .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
+          .range(from, to);
 
         // Filter by category if not general
         if (selectedCategory !== "general") {
@@ -577,7 +616,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
             console.warn("Falling back to fetching all articles without category filter...");
 
             // Fall back to fetching all articles without category filter
-            let fallbackQuery = (supabase.from(tableName as any) as any)
+            const fallbackQuery = (supabase.from(tableName as any) as any)
               .select("*", { count: 'exact' })
               .order("published_at", { ascending: false })
               .range((page - 1) * ARTICLES_PER_PAGE, page * ARTICLES_PER_PAGE - 1);
@@ -615,6 +654,11 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
         newArticles = data || [];
         totalCount = count || 0;
+        // Page 1: put excess rows into the buffer; display only the first page
+        if (page === 1) {
+          setArticleBuffer(newArticles.slice(ARTICLES_PER_PAGE));
+          newArticles = newArticles.slice(0, ARTICLES_PER_PAGE);
+        }
       }
 
       setTotalArticles(totalCount);
@@ -758,44 +802,20 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
   };
 
   const handleLoadMore = async () => {
-    if (loadingMore || !hasMore) return;
+    if (loading || loadingMore || !hasMore) return;
 
-    // If we're on the first page and have few articles, fetch more from the edge function
-    if (currentPage === 1 && articles.length < 20) {
-      setLoadingMore(true);
-      try {
-        const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-        const functionPromise = supabase.functions.invoke("scrape-news", {
-          body: {
-            category: categoryValue,
-            region: selectedRegion === "all" ? null : selectedRegion,
-            country: selectedCountry === "all" ? null : selectedCountry,
-            limit: 100  // Fetch more articles to get good coverage
-          }
-        });
-
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout')), 30000);
-        });
-
-        const result = await Promise.race([functionPromise, timeoutPromise]) as any;
-        const { data, error } = result;
-
-        if (error) throw error;
-
-        // Refresh articles from database
-        await fetchArticles(currentPage + 1, true);
-      } catch (error) {
-        console.error("Error loading more articles:", error);
-        // Fall back to regular pagination if edge function fails
-        await fetchArticles(currentPage + 1, true);
-      } finally {
-        setLoadingMore(false);
-      }
-    } else {
-      // Regular pagination for subsequent pages
-      await fetchArticles(currentPage + 1, true);
+    // Serve from pre-fetched buffer instantly (no spinner, no DB call)
+    if (articleBuffer.length >= ARTICLES_PER_PAGE) {
+      const next = articleBuffer.slice(0, ARTICLES_PER_PAGE);
+      const remaining = articleBuffer.slice(ARTICLES_PER_PAGE);
+      setArticles(prev => [...prev, ...next]);
+      setArticleBuffer(remaining);
+      setCurrentPage(p => p + 1);
+      return;
     }
+
+    // Buffer exhausted — fetch next batch from DB
+    await fetchArticles(currentPage + 1, true);
   };
 
   const allTabArticles = useMemo(() => {
@@ -844,6 +864,9 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
       return haystack.includes(query);
     });
   }, [favoriteArticles, searchQuery]);
+
+  // Lead slot: promote image-having stories to the first 3 positions.
+  const leadArticles = useMemo(() => promoteImageLead(allTabArticles), [allTabArticles]);
 
   const activeTabArticles = activeTab === "favorites" ? favoriteTabArticles : allTabArticles;
   const displayedArticles = viewMode === "globe" ? allTabArticles : activeTabArticles;
@@ -944,6 +967,16 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
     }
   }, [fontScale]);
 
+  const handleFontDown = () => {
+    const idx = FONT_SCALE_STEPS.indexOf(fontScale);
+    if (idx > 0) setFontScale(FONT_SCALE_STEPS[idx - 1]);
+  };
+  const handleFontReset = () => setFontScale(100);
+  const handleFontUp = () => {
+    const idx = FONT_SCALE_STEPS.indexOf(fontScale);
+    if (idx < FONT_SCALE_STEPS.length - 1) setFontScale(FONT_SCALE_STEPS[idx + 1]);
+  };
+
   const toggleDigestCategory = (categoryValue: string) => {
     setDigestCategories((prev) => {
       if (prev.includes(categoryValue)) {
@@ -983,6 +1016,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
       if (error) throw error;
 
+      setDigestSubscribed(true);
       toast({
         title: "Digest subscription updated",
         description: `You will receive ${digestFrequency} alerts for ${digestCategories.map(getCategoryLabel).join(", ")}.`,
@@ -1001,6 +1035,7 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         window.localStorage.setItem("digest_subscriptions", JSON.stringify(localSubs));
       }
 
+      setDigestSubscribed(true);
       toast({
         title: "Subscribed!",
         description: `You'll receive ${digestFrequency} alerts for ${digestCategories.map(getCategoryLabel).join(", ")}.`,
@@ -1028,270 +1063,121 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
 
   if (viewMode === "globe") {
     return (
-      <div className="h-screen w-screen overflow-hidden bg-black">
-        <button
-          onClick={() => setViewMode("cards")}
-          className="fixed left-4 top-4 z-50 flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black shadow-2xl ring-2 ring-white/50 transition-all hover:bg-white/90 active:scale-95"
-          aria-label="Exit globe view"
-        >
-          ✕ Exit Globe View
-        </button>
-        <InteractiveGlobeView
-          selectedRegion={selectedRegion}
-          selectedCountry={selectedCountry}
-          articles={allTabArticles}
-          loading={loading || scraping || autoFetching}
-          onSelectCountry={handleGlobeCountrySelect}
-          fullscreen
-        />
-      </div>
+      <InteractiveGlobeView
+        selectedRegion={selectedRegion}
+        selectedCountry={selectedCountry}
+        articles={allTabArticles}
+        loading={loading || scraping || autoFetching}
+        onSelectCountry={handleGlobeCountrySelect}
+        fullscreen
+        onExit={() => setViewMode("cards")}
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-background" style={{ background: 'radial-gradient(ellipse 80% 50% at 20% 10%, hsl(240 60% 96%), transparent), radial-gradient(ellipse 60% 40% at 80% 90%, hsl(270 50% 96%), transparent), hsl(var(--background))' }}>
-      {/* Header */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-[hsl(235_85%_45%)] via-[hsl(245_75%_55%)] to-[hsl(270_70%_50%)] text-primary-foreground py-6 px-6">
-        {/* Floating orbs */}
-        <div className="absolute -top-16 -left-16 w-80 h-80 bg-blue-400/25 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-20 -right-10 w-96 h-96 bg-purple-500/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.2s' }}></div>
-        <div className="absolute top-8 right-1/4 w-56 h-56 bg-indigo-300/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.6s' }}></div>
-        <div className="absolute bottom-4 left-1/3 w-48 h-48 bg-violet-400/20 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1.8s' }}></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent"></div>
-        <div className="container mx-auto relative z-10">
-          {/* Auth Header */}
-          <div className="flex justify-between items-center mb-6 gap-4">
-            <div className="flex items-center gap-2">
-              <Globe className="w-6 h-6 text-blue-400" />
-              <span className="text-sm font-medium">Free Global News Service</span>
-            </div>
-            <nav aria-label="Primary navigation" className="hidden md:flex items-center gap-2">
-              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
-                <Link to="/">Home</Link>
-              </Button>
-              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
-                <Link to="/about">About</Link>
-              </Button>
-              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
-                <Link to="/contact">Contact</Link>
-              </Button>
-              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
-                <Link to="/privacy">Privacy</Link>
-              </Button>
-              <Button asChild variant="ghost" className="text-white hover:bg-white/20 hover:text-white">
-                <Link to="/terms">Terms</Link>
-              </Button>
-            </nav>
-            <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1.5">
-                <span className="text-xs font-medium text-white/90">Interactive View</span>
-                <Switch
-                  checked={false}
-                  onCheckedChange={(checked) => setViewMode(checked ? "globe" : "cards")}
-                  aria-label="Toggle interactive globe view"
-                />
-              </div>
-              {user ? (
-                <Button
-                  variant="outline"
-                  onClick={onProfile}
-                  className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  {user.user_metadata?.full_name || user.email}
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  onClick={onLogin}
-                  className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-                >
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Sign In
-                </Button>
-              )}
-            </div>
-          </div>
+    <div className="min-h-screen bg-background">
+      <SiteHeader
+        user={user}
+        onLogin={() => navigate("/auth")}
+        onProfile={() => navigate("/account")}
+        onOpenGlobe={() => setViewMode("globe")}
+        searchOpen={searchOpen}
+        onToggleSearch={() => setSearchOpen(s => !s)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onFontDown={handleFontDown}
+        onFontReset={handleFontReset}
+        onFontUp={handleFontUp}
+      />
+      <CategoryTabs
+        selectedCategory={selectedCategory}
+        onSelect={(val) => setSelectedCategory(val)}
+        disabled={scraping}
+      />
+      <FilterBar
+        selectedRegion={selectedRegion}
+        onRegionChange={(val) => { setSelectedRegion(val); setSelectedCountry("all"); }}
+        selectedCountry={selectedCountry}
+        onCountryChange={setSelectedCountry}
+        isScraping={scraping}
+        onFetchHeadlines={handleScrape}
+      />
 
-          {/* Main Header Content */}
-          <div className="text-center">
-            <div className="flex justify-center animate-fade-in-up -mt-1">
-              <img
-                src="/snewweb-logo.png"
-                alt="snewweb.org"
-                className="h-20 md:h-24 w-auto object-contain drop-shadow-lg"
-                decoding="async"
-              />
-            </div>
-            <div className="mt-4 text-sm text-blue-100/90">
-              <span className="font-medium">Home</span> / {categories.find(c => c.value === selectedCategory)?.label || "General"}
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Feed body */}
+      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 28px 56px" }}>
+        <FeedTabs
+          activeTab={activeTab}
+          onTabChange={(tab) => setActiveTab(tab)}
+          favoritesCount={favorites.size}
+          articleCount={displayedArticles.length}
+          totalArticles={totalArticles}
+          searchQuery={searchQuery}
+        />
 
-      {/* Category Tabs and Filter Bar */}
-      <div className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur-md shadow-md animate-slide-up">
-        <div className="container mx-auto px-4 py-5">
-          <div className="flex flex-col gap-4">
-            {/* Category Tabs */}
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => {
-                const Icon = category.icon;
-                return (
-                  <Button
-                    key={category.value}
-                    variant={selectedCategory === category.value ? "default" : "outline"}
-                    onClick={() => {
-                      setSelectedCategory(category.value);
-                    }}
-                    className="flex items-center gap-2 h-11"
-                    disabled={scraping}
-                    aria-pressed={selectedCategory === category.value}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {category.label}
-                  </Button>
-                );
-              })}
-            </div>
+        {activeTab === "all" && (
+          <>
+            <LeadStory
+              articles={leadArticles.slice(0, 3)}
+              userId={user?.id}
+              favorites={favorites}
+              notes={notes}
+              publicNotes={publicNotes}
+              onToggleFavorite={toggleFavorite}
+              onOpenNotes={openNotesModal}
+              onRequestLogin={() => navigate("/auth")}
+            />
+            <ArticleGrid
+              articles={leadArticles.length >= 3 ? leadArticles.slice(3) : leadArticles}
+              loading={loading}
+              loadingMore={loadingMore}
+              hasMore={hasMore}
+              scraping={scraping}
+              autoFetching={autoFetching}
+              activeTab="all"
+              userId={user?.id}
+              favorites={favorites}
+              notes={notes}
+              publicNotes={publicNotes}
+              onToggleFavorite={toggleFavorite}
+              onOpenNotes={openNotesModal}
+              onRequestLogin={() => navigate("/auth")}
+              onLoadMore={handleLoadMore}
+              onFetchHeadlines={handleScrape}
+              searchQuery={searchQuery}
+            />
+          </>
+        )}
 
-            {/* Region Selector and Fetch Button */}
-            <div className="flex gap-3 items-center flex-wrap">
-              <div className="flex items-center gap-2 rounded-md border bg-background/80 px-3 py-2">
-                <span className="text-xs font-medium text-muted-foreground">Interactive View</span>
-                <Switch
-                  checked={false}
-                  onCheckedChange={(checked) => setViewMode(checked ? "globe" : "cards")}
-                  aria-label="Toggle interactive globe mode"
-                />
-              </div>
-              <div className="flex items-center gap-1 rounded-md border bg-background/80 p-1">
-                <Type className="w-4 h-4 text-muted-foreground mx-1" />
-                {FONT_SCALE_STEPS.map((scale) => (
-                  <Button
-                    key={scale}
-                    type="button"
-                    variant={fontScale === scale ? "default" : "ghost"}
-                    size="sm"
-                    className="h-8 px-2 text-xs"
-                    onClick={() => setFontScale(scale)}
-                    aria-label={`Set font size to ${scale}%`}
-                  >
-                    {scale === 90 ? "A-" : scale === 100 ? "A" : "A+"}
-                  </Button>
-                ))}
-              </div>
-              <div className="relative w-full sm:w-[280px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search headlines, sources, countries..."
-                  className="pl-9 pr-9 h-11"
-                  aria-label="Search articles"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label="Clear search"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-                <SelectTrigger className="w-[180px] h-11 border-border/50 hover:border-primary/50 transition-colors">
-                  <SelectValue placeholder="Select region" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REGION_OPTIONS.map((region) => (
-                    <SelectItem key={region.value} value={region.value}>
-                      {region.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {activeTab === "favorites" && (
+          <ArticleGrid
+            articles={favoriteTabArticles}
+            loading={loading}
+            loadingMore={false}
+            hasMore={false}
+            scraping={false}
+            autoFetching={false}
+            activeTab="favorites"
+            userId={user?.id}
+            favorites={favorites}
+            notes={notes}
+            publicNotes={publicNotes}
+            onToggleFavorite={toggleFavorite}
+            onOpenNotes={openNotesModal}
+            onRequestLogin={() => navigate("/auth")}
+            onLoadMore={handleLoadMore}
+            onFetchHeadlines={handleScrape}
+            searchQuery={searchQuery}
+          />
+        )}
 
-              {/* Country selector — visible only when a specific region is selected */}
-              {selectedRegion !== "all" && COUNTRIES_BY_REGION[selectedRegion] && (
-                <Select value={selectedCountry} onValueChange={setSelectedCountry}>
-                  <SelectTrigger className="w-[200px] h-11 border-border/50 hover:border-primary/50 transition-colors">
-                    <SelectValue placeholder="All Countries" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Countries</SelectItem>
-                    {COUNTRIES_BY_REGION[selectedRegion].map((c) => (
-                      <SelectItem key={c.code} value={c.code}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <Button
-                onClick={handleScrape}
-                disabled={scraping}
-                variant="secondary"
-                className="h-11 px-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95 hover-glow disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${scraping ? 'animate-spin' : ''}`} />
-                {scraping ? "Fetching Headlines..." : "Fetch Headlines"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Articles Grid */}
-      <main className="container mx-auto px-4 py-12">
-        <div className="flex items-center justify-between mb-6 animate-fade-in">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-            {categories.find(c => c.value === selectedCategory)?.label || "Latest Global News Headlines"}
-          </h2>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-            <p className="text-sm font-medium text-muted-foreground">
-              {displayedArticles.length} shown
-              {searchQuery ? ` for "${searchQuery}"` : ` of ${totalArticles}`} {totalArticles === 1 ? "article" : "articles"}
-            </p>
-          </div>
-        </div>
-
-        <>
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "all" | "favorites" | "analysis")} className="mb-8">
-              <TabsList className="grid w-full max-w-md grid-cols-3">
-                <TabsTrigger value="all" className="flex items-center gap-2">
-                  <Globe className="w-4 h-4" />
-                  All Articles
-                </TabsTrigger>
-                <TabsTrigger value="favorites" className="flex items-center gap-2">
-                  <Heart className="w-4 h-4" />
-                  Favorites ({favorites.size})
-                </TabsTrigger>
-                <TabsTrigger value="analysis" className="flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Analysis
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="all" className="mt-6">
-                {renderArticles(allTabArticles)}
-              </TabsContent>
-
-              <TabsContent value="favorites" className="mt-6">
-                {renderArticles(favoriteTabArticles)}
-              </TabsContent>
-
-              <TabsContent value="analysis" className="mt-6">
+        {activeTab === "analysis" && (
+          <div className="mt-6">
                 {!user ? (
                   <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50">
                     <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                     <p className="text-muted-foreground mb-4">Sign in to create and view analyses.</p>
-                    <Button onClick={onLogin} variant="default">
+                    <Button onClick={() => navigate("/auth")} variant="default">
                       <LogIn className="w-4 h-4 mr-2" />
                       Sign In
                     </Button>
@@ -1440,58 +1326,24 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
               )}
             </div>
             )}
-              </TabsContent>
-            </Tabs>
-        </>
+          </div>
+        )}
 
-        <section className="mt-10 rounded-xl border bg-card/70 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <MailCheck className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-semibold">Email alerts & digest subscription</h3>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Get daily or weekly summaries for your selected categories.
-          </p>
-          <div className="flex flex-col md:flex-row gap-3 mb-3">
-            <Input
-              value={digestEmail}
-              onChange={(e) => setDigestEmail(e.target.value)}
-              placeholder="your@email.com"
-              type="email"
-              className="h-11 md:max-w-sm"
-              aria-label="Digest email address"
-            />
-            <Select value={digestFrequency} onValueChange={(value: "daily" | "weekly") => setDigestFrequency(value)}>
-              <SelectTrigger className="h-11 md:w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">Daily digest</SelectItem>
-                <SelectItem value="weekly">Weekly digest</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button type="button" onClick={subscribeToDigest} disabled={subscribingDigest} className="h-11 md:w-auto">
-              {subscribingDigest ? "Saving..." : "Subscribe"}
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {categories.map((category) => (
-              <Button
-                key={`digest-${category.value}`}
-                type="button"
-                variant={digestCategories.includes(category.value) ? "default" : "outline"}
-                size="sm"
-                onClick={() => toggleDigestCategory(category.value)}
-                aria-pressed={digestCategories.includes(category.value)}
-              >
-                {category.label}
-              </Button>
-            ))}
-          </div>
-        </section>
       </main>
 
-      {/* Notes Dropdown */}
+      <DigestSection
+        digestEmail={digestEmail}
+        onEmailChange={setDigestEmail}
+        digestFrequency={digestFrequency}
+        onFrequencyChange={setDigestFrequency}
+        digestCategories={digestCategories}
+        onToggleCategory={toggleDigestCategory}
+        onSubscribe={subscribeToDigest}
+        subscribing={subscribingDigest}
+        subscribed={digestSubscribed}
+      />
+
+      {/* Notes modal */}
       <ArticleNotesModal
         isOpen={notesModal.isOpen}
         onClose={closeNotesModal}
@@ -1502,147 +1354,10 @@ const Index = ({ user, onLogin, onProfile }: IndexProps) => {
         articleTitle={notesModal.title}
       />
 
-      <footer className="border-t border-border/60 bg-card/60 backdrop-blur-sm mt-16">
-        <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} snewweb.org - Global news insights.</p>
-          <nav aria-label="Footer links" className="flex flex-wrap items-center gap-3 text-sm">
-            <Link to="/about" className="text-muted-foreground hover:text-foreground">About</Link>
-            <Link to="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link>
-            <Link to="/privacy" className="text-muted-foreground hover:text-foreground">Privacy Policy</Link>
-            <Link to="/terms" className="text-muted-foreground hover:text-foreground">Terms</Link>
-          </nav>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 
-  // Render articles function
-  function renderArticles(articlesToRender: any[]) {
-    return (
-      <>
-        {loading ? (
-          <div className="text-center py-24">
-            <div className="inline-flex items-center justify-center w-16 h-16 mb-6 rounded-full bg-primary/10 animate-glow">
-              <RefreshCw className="w-8 h-8 text-primary animate-spin" />
-            </div>
-            <p className="text-lg text-muted-foreground animate-pulse">Loading articles...</p>
-            <div className="mt-4 flex justify-center space-x-1">
-              <div className="w-2 h-2 bg-primary rounded-full animate-bounce-gentle"></div>
-              <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce-gentle" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-primary/30 rounded-full animate-bounce-gentle" style={{ animationDelay: '0.2s' }}></div>
-            </div>
-          </div>
-        ) : articlesToRender.length === 0 ? (
-          <div className="text-center py-24 bg-gradient-to-br from-muted/30 to-muted/10 rounded-2xl border-2 border-dashed border-border/50 animate-fade-in">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted/50 flex items-center justify-center animate-bounce-gentle">
-              {autoFetching ? (
-                <RefreshCw className="w-8 h-8 text-primary animate-spin" />
-              ) : activeTab === "favorites" ? (
-                <Heart className="w-8 h-8 text-muted-foreground" />
-              ) : (
-                <Search className="w-8 h-8 text-muted-foreground" />
-              )}
-            </div>
-            <p className="text-xl font-semibold text-foreground mb-2">
-              {autoFetching
-                ? "Fetching latest headlines…"
-                : activeTab === "favorites"
-                ? "No favorites yet"
-                : "That's all we have for now"}
-            </p>
-            <p className="text-sm text-muted-foreground mb-6">
-              {autoFetching
-                ? "Hang tight, we're pulling the freshest stories for you."
-                : activeTab === "favorites"
-                ? "Start adding articles to your favorites by clicking the heart icon"
-                : "Check back soon to get new headlines, or try a different category or region!"}
-            </p>
-            {activeTab === "all" && !autoFetching && (
-              <div className="flex justify-center gap-3">
-                <Button onClick={handleScrape} disabled={scraping} className="animate-scale-in">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Fetch Headlines
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {articlesToRender.map((article, index) => {
-                const noteData = notes.get(article.id);
-                const articlePublicNotes = publicNotes.get(article.id) || [];
-                return (
-                  <div
-                    key={article.id}
-                    style={{
-                      animationDelay: `${index * 0.05}s`,
-                      animationFillMode: 'both'
-                    }}
-                    className="animate-fade-in"
-                  >
-                    <ArticleCard
-                      title={article.title}
-                      snippet={article.snippet}
-                      url={article.url}
-                      sourceName={article.source_name}
-                      sourceCountry={article.source_country}
-                      sourceRegion={article.source_region}
-                      publishedAt={article.published_at}
-                      imageUrl={article.image_url}
-                      articleId={article.id}
-                      userId={user?.id}
-                      isFavorited={favorites.has(article.id)}
-                      noteText={noteData?.text}
-                      noteIsPublic={noteData?.isPublic}
-                      publicNotes={articlePublicNotes}
-                      onToggleFavorite={toggleFavorite}
-                      onOpenNotes={openNotesModal}
-                      onRequestLogin={onLogin}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Load More Button */}
-            {hasMore && articlesToRender.length > 0 && activeTab === "all" && (
-              <div className="flex justify-center mt-12">
-                <Button
-                  onClick={handleLoadMore}
-                  disabled={loadingMore}
-                  variant="outline"
-                  className="px-8 py-3 hover:scale-105 transition-all hover-glow"
-                >
-                  {loadingMore ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      Loading more...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Load More Articles
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {/* Background Loading Indicator */}
-            {scraping && (
-              <div className="fixed bottom-6 right-6 bg-card/95 backdrop-blur-md border border-border/50 rounded-lg px-4 py-3 shadow-lg animate-slide-up">
-                <div className="flex items-center gap-3">
-                  <RefreshCw className="w-4 h-4 text-primary animate-spin" />
-                  <span className="text-sm font-medium">Fetching fresh headlines...</span>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  }
 };
 
 export default Index;
