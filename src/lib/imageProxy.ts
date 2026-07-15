@@ -10,11 +10,16 @@
  * @param opts    Optional width/height for the rendering context.
  * @returns       A proxied https://images.weserv.nl/… URL, or null when rawUrl is empty.
  */
+const SUPABASE_STORAGE_HOST = "zrofxxvmsaaoaztorpyt.supabase.co";
+
 export function proxyImage(
   rawUrl: string | null | undefined,
   opts: { width?: number; height?: number } = {},
 ): string | null {
   if (!rawUrl || rawUrl.startsWith("data:")) return null;
+
+  // Supabase Storage images are already on our CDN — serve them directly.
+  try { if (new URL(rawUrl).hostname === SUPABASE_STORAGE_HOST) return rawUrl; } catch { /* fall through */ }
 
   // weserv.nl expects the URL without a protocol prefix.
   const stripped = rawUrl.replace(/^https?:\/\//i, "");
