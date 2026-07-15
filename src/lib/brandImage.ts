@@ -2,9 +2,11 @@
 // Utilities to identify Google branding images (that should be hidden) and
 // AI-generated images (that should carry an "AI illustration" label).
 
+// Only block generic Google branding images — NOT real article thumbnails.
+// news.google.com/api/attachments/* are real article images embedded in RSS feeds.
 const BRANDING_HOSTS = [
-  'gstatic.com',               // Google static assets (G logo, icons)
-  'lh3.googleusercontent.com', // Generic Google "G" logo placeholder
+  'gstatic.com',               // Google static assets (logos, icons)
+  'lh3.googleusercontent.com', // Generic "G" logo served from Google's avatar CDN
 ];
 
 /**
