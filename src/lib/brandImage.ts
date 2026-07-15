@@ -3,20 +3,25 @@
 // AI-generated images (that should carry an "AI illustration" label).
 
 const BRANDING_HOSTS = [
-  'lh3.googleusercontent.com', // Google News generic "G" logo — NOT real article images
-  'gstatic.com',
-  'news.google.com',
+  'gstatic.com',               // Google static assets (G logo, icons)
+  'lh3.googleusercontent.com', // Generic Google "G" logo placeholder
 ];
 
 /**
  * Returns true if `url` is a known Google branding/logo image that should NOT
  * be shown on article cards. Does NOT reject real publisher-hosted images.
- * Keeps `blogger.googleusercontent.com` and other legitimate publishers.
+ *
+ * news.google.com/api/attachments/ URLs are REAL article thumbnails embedded
+ * in the RSS feed — those are allowed through. Only the generic logo hosts
+ * (gstatic.com, lh3.googleusercontent.com) are suppressed.
  */
 export function isBrandingImage(url: string | null | undefined): boolean {
   if (!url) return false;
   try {
-    const host = new URL(url).hostname.toLowerCase();
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    // Google News article thumbnails — legitimate preview images, not branding
+    if (host === 'news.google.com' && parsed.pathname.startsWith('/api/attachments/')) return false;
     return BRANDING_HOSTS.some((b) => host === b || host.endsWith('.' + b));
   } catch {
     return false;
