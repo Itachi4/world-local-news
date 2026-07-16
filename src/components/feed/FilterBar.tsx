@@ -86,6 +86,7 @@ export function FilterBar({
                 style={{
                   appearance: "none",
                   height: 32, padding: "0 30px 0 12px",
+                  minWidth: 160,
                   border: "1px solid hsl(var(--line-2))",
                   background: "hsl(var(--card))",
                   color: "hsl(var(--foreground))",
