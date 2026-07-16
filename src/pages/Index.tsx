@@ -715,97 +715,34 @@ const Index = ({ user }: IndexProps) => {
       // First, show existing articles immediately
       await fetchArticles(1, false);
 
-      // Create a timeout promise - increased to 45 seconds for initial fetch
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout - function took too long to respond')), 45000); // 45 second timeout
-      });
-
-      // Create the function call promise with category
       const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-      console.log('Frontend sending:', { selectedCategory, categoryValue, region: selectedRegion, country: selectedCountry });
-
-      // Initial fetch: get more articles to ensure good coverage from all countries
       const requestBody = {
         category: categoryValue,
         region: selectedRegion === "all" ? null : selectedRegion,
         country: selectedCountry === "all" ? null : selectedCountry,
-        limit: 100  // Fetch 100 articles to get good coverage from all countries
+        limit: 100,
       };
 
-      console.log('📡 Fetching articles with:', requestBody);
-      console.log('🔗 Expected RSS URLs will be logged in Supabase Edge Function logs');
+      // Fire scrape + backfill without awaiting — full scrape takes 5-10 min,
+      // awaiting synchronously always times out at the 150s edge function limit.
+      supabase.functions.invoke("scrape-news", { body: requestBody }).catch(() => {});
+      supabase.functions.invoke("scrape-news", {
+        body: { backfillImages: true, perTableLimit: 10 },
+      }).catch(() => {});
 
-      const functionPromise = supabase.functions.invoke("scrape-news", {
-        body: requestBody
+      toast({
+        title: "Fetching in background",
+        description: "Scraping headlines now — auto-refreshing in 90 seconds.",
       });
-
-      // Race between timeout and function call
-      console.log('⏱️ Starting fetch with 45 second timeout...');
-      const startTime = Date.now();
-      const result = await Promise.race([functionPromise, timeoutPromise]) as any;
-      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ Fetch completed in ${elapsedTime} seconds`);
-
-      const { data, error } = result;
-
-      if (error) {
-        console.error('❌ Error from edge function:', error);
-        throw error;
-      }
-
-      console.log('📊 Response from edge function:', data);
-
-      // Refresh articles after scraping to show new ones
-      // Wait longer for database to update (especially for multiple region tables)
-      console.log('⏳ Waiting for database to update...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Try fetching articles, with retry if needed
-      let displayedCount = await fetchArticles(1, false);
-      console.log(`📈 First fetch: Scraped ${data.articlesScraped} articles, displaying ${displayedCount} articles`);
-
-      // If no articles displayed but articles were scraped, try again after a longer delay
-      if (displayedCount === 0 && data.articlesScraped > 0) {
-        console.log('⚠️ No articles displayed on first fetch, retrying after delay...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        displayedCount = await fetchArticles(1, false);
-        console.log(`📈 Retry fetch: Displaying ${displayedCount} articles`);
-      }
-
-      if (data.articlesScraped > 0) {
-        toast({
-          title: "Headlines fetched successfully",
-          description: `Fetched ${data.articlesScraped} new articles. ${displayedCount > 0 ? `${displayedCount} articles displayed.` : 'Articles fetched but not matching current filters.'}`,
-        });
-      } else if (displayedCount > 0) {
-        // Articles are already in the DB — don't alarm the user
-        toast({
-          title: "Already up to date",
-          description: `Showing ${displayedCount} cached articles. No newer articles found right now.`,
-        });
-      } else {
-        toast({
-          title: "That's all we have for now",
-          description: "Check back soon to get new headlines, or try a different category or region!",
-        });
-      }
-    } catch (error) {
-      console.error("Error scraping news:", error);
-
-      // Check if it's a timeout error
-      if (error.message.includes('timeout')) {
-        toast({
-          title: "Request Timeout",
-          description: "The function took too long to respond. Please try again.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error fetching headlines",
-          description: "Failed to fetch articles",
-          variant: "destructive",
-        });
-      }
+      await new Promise((r) => setTimeout(r, 90_000));
+      const displayedCount = await fetchArticles(1, false);
+      toast({
+        title: displayedCount > 0 ? "Feed updated" : "Still processing",
+        description:
+          displayedCount > 0
+            ? `Showing ${displayedCount} articles.`
+            : "Articles are still being processed — check back shortly.",
+      });
     } finally {
       setScraping(false);
     }
