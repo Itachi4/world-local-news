@@ -47,6 +47,25 @@ const categories = [
   { value: "religion-spirituality",      label: "Religion & Spirituality"      },
 ];
 
+// Most articles in the DB are stored as category='general' (the daily cron passes no category).
+// When the user selects a non-general tab, fall back to keyword search on title/snippet so
+// those tabs are never empty.
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  "tech-ai":                    ["technology", "software", "startup", "innovation", "digital", "cyber", "semiconductor", "chip", "robot", "drone", "satellite", "broadband", "5G"],
+  "business-finance":           ["economy", "inflation", "GDP", "stock", "market", "investment", "trade", "finance", "revenue", "profit", "bank", "IMF", "budget", "tariff", "export"],
+  "politics":                   ["president", "parliament", "minister", "election", "government", "senate", "congress", "legislation", "diplomat", "summit", "treaty", "sanction", "vote"],
+  "arts-entertainment-fashion": ["music", "movie", "film", "festival", "fashion", "celebrity", "concert", "exhibition", "theatre", "culture", "award", "album", "entertainment"],
+  "sports-games":               ["football", "cricket", "basketball", "tennis", "soccer", "Olympics", "championship", "tournament", "athlete", "match", "league", "stadium", "sport"],
+  "travel-leisure":             ["travel", "tourism", "tourist", "vacation", "hotel", "airline", "flight", "destination", "resort", "visa", "passport", "heritage", "leisure"],
+  "religion-spirituality":      ["religion", "faith", "church", "mosque", "temple", "prayer", "spiritual", "holy", "pilgrimage", "bishop", "imam", "pope", "ramadan", "easter", "diwali"],
+};
+
+function buildCategoryOrFilter(category: string): string {
+  const kws = CATEGORY_KEYWORDS[category];
+  if (!kws?.length) return '';
+  return kws.flatMap(kw => [`title.ilike.%${kw}%`, `snippet.ilike.%${kw}%`]).join(',');
+}
+
 const FONT_SCALE_STEPS = [90, 100, 112];
 
 // ── Lead promotion ────────────────────────────────────────────────────────────
@@ -492,7 +511,8 @@ const Index = ({ user }: IndexProps) => {
 
           // Filter by category if not general
           if (selectedCategory !== "general") {
-            query = query.eq("category", selectedCategory);
+            const orFilter = buildCategoryOrFilter(selectedCategory);
+            if (orFilter) query = (query as any).or(orFilter);
           }
 
           // Filter by country if selected (only applies within a specific region)
@@ -591,7 +611,8 @@ const Index = ({ user }: IndexProps) => {
 
         // Filter by category if not general
         if (selectedCategory !== "general") {
-          query = query.eq("category", selectedCategory);
+          const orFilter = buildCategoryOrFilter(selectedCategory);
+          if (orFilter) query = (query as any).or(orFilter);
         }
 
         // Filter by country if selected
@@ -764,7 +785,10 @@ const Index = ({ user }: IndexProps) => {
         .gte('published_at', sevenDaysAgo)
         .order('published_at', { ascending: false })
         .range(from, from + ARTICLES_PER_PAGE - 1);
-      if (selectedCategory !== 'general') q = q.eq('category', selectedCategory);
+      if (selectedCategory !== 'general') {
+        const orFilter = buildCategoryOrFilter(selectedCategory);
+        if (orFilter) q = (q as any).or(orFilter);
+      }
       if (selectedCountry !== 'all') q = q.eq('source_country', selectedCountry);
       const { data } = await q;
       if (data && data.length > 0) setArticleBuffer(prev => [...prev, ...data]);
