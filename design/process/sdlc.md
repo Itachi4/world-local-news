@@ -23,10 +23,19 @@ process around it.
   a GitHub Release with a changelog
 - **Branches**: `staging` exists (locally and on `origin`), intended as an integration branch
 
+## Deploy mechanism (resolved 2026-07-20)
+
+**Vercel**, connected via GitHub integration (no `vercel.json`/`.vercel` in the repo — configured
+in the Vercel dashboard, not tracked in-repo). Confirmed by observation: pushing to `main` earlier
+this session made snewweb.org update live, and opening PR #14 against `staging` produced a Vercel
+preview deployment + a "Vercel Preview Comments" check. Standard zero-config Vercel behavior:
+`main` is the production branch (deploys on push), every other branch/PR gets its own preview URL.
+This means the "committed but not live" failure mode from earlier this session was really "not
+pushed to `main`" — Vercel itself deploys automatically and immediately once code lands there, so
+the fix is upstream of Vercel: don't let unmerged work sit un-pushed, not "add a deploy step."
+
 ## What's genuinely missing
 
-- **No deploy step anywhere.** CI builds and lints but nothing deploys; how snewweb.org actually
-  gets updated in production is currently unclear.
 - **Single Supabase environment.** `supabase/config.toml` has exactly one `project_id`. CI
   already references `STAGING_SUPABASE_URL`/`STAGING_SUPABASE_ANON_KEY` secrets, implying a
   staging environment was intended, but no second project exists to point them at.
@@ -58,9 +67,12 @@ process around it.
    verified on staging before it ever touches production — this matters more with 3 people
    potentially writing migrations, since collisions/ordering conflicts are now possible.
    *Owner action — billing/account.*
-6. **A real deploy pipeline.** A CD job that deploys on merge to `main`, once the actual hosting
-   mechanism for snewweb.org is identified. Removes the "committed but not live" failure mode by
-   making deploy automatic and visible to all 3 people, not just whoever ran the manual step.
+6. **Deploy is already automatic (Vercel) — the fix is process, not tooling.** Vercel deploys
+   `main` to production on every push and every other branch to a preview URL, with no CD job
+   needed. What actually caused the "committed but not live" incident this session was unmerged
+   work sitting un-pushed — which items 1-4 above (issue → branch → reviewed PR → merge) prevent
+   structurally, since a PR that's still open can't silently vanish the way an unpushed local
+   commit did.
 7. **Minimum viable automated testing.** One Playwright smoke spec (load feed, log in, toggle a
    favorite, open the commentary modal) run in CI on every PR — enough to catch "the feature
    doesn't actually render" before merge. Grows as the team does; don't build a full test
@@ -102,14 +114,17 @@ process around it.
 
 - Enable branch protection on `main`/`staging` in GitHub repo settings — require CI +
   1 approval before merge (or explicitly authorize an AI session to do it via `gh api`).
-- Add `.github/CODEOWNERS` listing all 3 devs as owners.
+- ~~Add `.github/CODEOWNERS`~~ — done; currently `@Itachi4` only, add the 2 new devs' handles
+  once known.
 - Grant the 2 new devs repo write access (branch/PR permissions, not direct push to
   `main`/`staging` if protection is configured correctly).
 - Provision a second Supabase project for staging and add its URL/anon key as the
   `STAGING_SUPABASE_URL`/`STAGING_SUPABASE_ANON_KEY` GitHub secrets; invite the 2 new devs to it,
   not to the production project.
-- Identify and document the actual production hosting/deploy mechanism for snewweb.org so a CD
-  job can be built against it.
+- ~~Identify the production deploy mechanism~~ — done; it's Vercel, see above.
+- Consider disabling Vercel's automatic production deploy on push-to-`main` in favor of
+  deploy-on-merge-only once branch protection is enabled, so a merge is always the trigger, never
+  a direct push (belt-and-suspenders with branch protection, not a replacement for it).
 
 ## Working rule
 
