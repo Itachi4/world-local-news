@@ -1,0 +1,8 @@
+# Code owners for world-local-news (snewweb.org)
+#
+# One shared owners line for the whole repo — a 3-person team doesn't need
+# per-directory carve-ups yet. Requires 1 approving review from an owner
+# before merge, per design/process/sdlc.md.
+#
+# TODO: add the 2 new devs' GitHub handles here once known.
+* @Itachi4
