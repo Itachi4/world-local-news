@@ -12,6 +12,16 @@
 - Keep files under 500 lines
 - Validate input at system boundaries
 
+## SDLC — no direct commits to `main`
+
+3-person team (repo owner + 2 devs). See `design/process/sdlc.md` for the full target workflow.
+Core rule: new work starts as a GitHub issue, happens on a branch, ships as a PR against
+`staging` requiring 1 approval from someone other than the author, and only reaches `main` after
+validation on `staging`. This applies to AI-assisted sessions too — don't implement a chat
+request directly on `main`/`staging`, and don't push DB migrations straight to production
+without a staging environment to validate against first (until one exists, flag the risk
+explicitly instead of pushing silently).
+
 ## Agent Comms (SendMessage-First Coordination)
 
 Named agents coordinate via `SendMessage`, not polling or shared state.
