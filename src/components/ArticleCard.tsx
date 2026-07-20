@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { ExternalLink, Heart, StickyNote, Share2, Copy, Send, Linkedin } from "lucide-react";
+import { ExternalLink, Heart, StickyNote, Share2, Copy, Send, Linkedin, Youtube } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { PublicNoteModal } from "./PublicNoteModal";
+import VideoPlayerModal from "./VideoPlayerModal";
 import { useToast } from "@/hooks/use-toast";
 import { regionColor } from "@/lib/regionColor";
 import { proxyImage } from "@/lib/imageProxy";
@@ -81,8 +82,13 @@ interface ArticleCardProps {
   noteText?: string;
   noteIsPublic?: boolean;
   publicNotes?: Array<{ text: string; userId: string }>;
+  commentaryVideoUrl?: string;
+  commentaryTitle?: string;
+  commentaryIsPublic?: boolean;
+  publicCommentaries?: Array<{ videoUrl: string; title?: string; userId: string; authorName: string }>;
   onToggleFavorite?: (articleId: string) => void;
   onOpenNotes?: (articleId: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
+  onOpenCommentary?: (articleId: string, title: string, videoUrl?: string, commentaryTitle?: string, isPublic?: boolean) => void;
   onRequestLogin?: () => void;
   /** When true, renders with larger image and headline (for the lead position). */
   isLead?: boolean;
@@ -94,12 +100,14 @@ export const ArticleCard = ({
   title, snippet, url, sourceName, sourceCountry, sourceRegion,
   publishedAt, imageUrl, articleId, userId,
   isFavorited = false, noteText, noteIsPublic = false,
-  publicNotes = [], onToggleFavorite, onOpenNotes, onRequestLogin,
+  publicNotes = [], commentaryVideoUrl, commentaryTitle, commentaryIsPublic = false,
+  publicCommentaries = [], onToggleFavorite, onOpenNotes, onOpenCommentary, onRequestLogin,
   isLead = false,
 }: ArticleCardProps) => {
   const displayUrl = getDisplayUrl(url);
   const articleUrl = isSafeExternalUrl(displayUrl) ? displayUrl : isSafeExternalUrl(url) ? url : null;
   const [selectedNote, setSelectedNote] = useState<{ text: string; userId: string } | null>(null);
+  const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
   // "proxy" → try weserv.nl; "raw" → retry with unproxied URL; "failed" → show SnewMark
   const [imgState, setImgState] = useState<"proxy" | "raw" | "failed">("proxy");
   const requireLoginToOpen = onRequestLogin && !userId;
@@ -311,6 +319,38 @@ export const ArticleCard = ({
           </div>
         )}
 
+        {/* Public video commentary from other users */}
+        {publicCommentaries.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted-foreground))", marginBottom: 6 }}>Watch Commentary:</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {publicCommentaries.map((commentary, idx) => (
+                <button
+                  key={idx} type="button"
+                  onClick={() => setPlayingVideoUrl(commentary.videoUrl)}
+                  style={{
+                    textAlign: "left", fontSize: 11.5,
+                    background: "hsl(var(--secondary))", border: 0,
+                    borderLeft: `2px solid hsl(var(--primary))`,
+                    padding: "6px 10px", borderRadius: 2,
+                    cursor: "pointer",
+                    color: "hsl(var(--foreground))",
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  <Youtube size={13} style={{ flexShrink: 0, color: "hsl(var(--primary))" }} />
+                  <span>
+                    Watch {commentary.authorName}&apos;s commentary
+                    {commentary.title && (
+                      <span style={{ display: "block", fontSize: 10.5, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>{commentary.title}</span>
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Action buttons */}
         {articleId && (
           <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: 8, marginTop: 2 }}>
@@ -369,6 +409,16 @@ export const ArticleCard = ({
                         {noteText && <span style={{ position: "absolute", top: 1, right: 1, width: 7, height: 7, borderRadius: "50%", background: "hsl(var(--primary))" }} />}
                       </Button>
                     </TooltipTrigger><TooltipContent><p>{noteText ? "Edit Note" : "Add Note"}</p></TooltipContent></Tooltip>
+
+                    <Tooltip><TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm"
+                        onClick={() => onOpenCommentary?.(articleId, title, commentaryVideoUrl, commentaryTitle, commentaryIsPublic)}
+                        aria-label={commentaryVideoUrl ? "Edit commentary" : "Add commentary"}
+                        className="h-9 w-9 p-0 text-muted-foreground hover:text-foreground relative">
+                        <Youtube size={14} />
+                        {commentaryVideoUrl && <span style={{ position: "absolute", top: 1, right: 1, width: 7, height: 7, borderRadius: "50%", background: "hsl(var(--primary))" }} />}
+                      </Button>
+                    </TooltipTrigger><TooltipContent><p>{commentaryVideoUrl ? "Edit Commentary" : "Record Commentary"}</p></TooltipContent></Tooltip>
                   </>
                 )}
               </TooltipProvider>
@@ -388,6 +438,10 @@ export const ArticleCard = ({
       {selectedNote && (
         <PublicNoteModal isOpen={!!selectedNote} onClose={() => setSelectedNote(null)}
           noteText={selectedNote.text} userId={selectedNote.userId} />
+      )}
+
+      {playingVideoUrl && (
+        <VideoPlayerModal videoUrl={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />
       )}
     </article>
   );

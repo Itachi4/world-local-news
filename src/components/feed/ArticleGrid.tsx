@@ -12,8 +12,11 @@ interface ArticleGridProps {
   favorites: Set<string>;
   notes: Map<string, { text: string; isPublic: boolean }>;
   publicNotes: Map<string, Array<{ text: string; userId: string }>>;
+  commentaries: Map<string, { videoUrl: string; title?: string; isPublic: boolean }>;
+  publicCommentaries: Map<string, Array<{ videoUrl: string; title?: string; userId: string; authorName: string }>>;
   onToggleFavorite: (id: string) => void;
   onOpenNotes: (id: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
+  onOpenCommentary: (id: string, title: string, videoUrl?: string, commentaryTitle?: string, isPublic?: boolean) => void;
   onRequestLogin: () => void;
   onLoadMore: () => void;
   onFetchHeadlines: () => void;
@@ -22,8 +25,8 @@ interface ArticleGridProps {
 
 export function ArticleGrid({
   articles, loading, loadingMore, hasMore, scraping, autoFetching, activeTab,
-  userId, favorites, notes, publicNotes,
-  onToggleFavorite, onOpenNotes, onRequestLogin,
+  userId, favorites, notes, publicNotes, commentaries, publicCommentaries,
+  onToggleFavorite, onOpenNotes, onOpenCommentary, onRequestLogin,
   onLoadMore, onFetchHeadlines, searchQuery,
 }: ArticleGridProps) {
   if (loading) {
@@ -93,6 +96,7 @@ export function ArticleGrid({
       >
         {articles.map((article) => {
           const noteData = notes.get(article.id);
+          const commentaryData = commentaries.get(article.id);
           return (
             <ArticleCard
               key={article.id}
@@ -110,8 +114,13 @@ export function ArticleGrid({
               noteText={noteData?.text}
               noteIsPublic={noteData?.isPublic}
               publicNotes={publicNotes.get(article.id) || []}
+              commentaryVideoUrl={commentaryData?.videoUrl}
+              commentaryTitle={commentaryData?.title}
+              commentaryIsPublic={commentaryData?.isPublic}
+              publicCommentaries={publicCommentaries.get(article.id) || []}
               onToggleFavorite={onToggleFavorite}
               onOpenNotes={onOpenNotes}
+              onOpenCommentary={onOpenCommentary}
               onRequestLogin={onRequestLogin}
             />
           );

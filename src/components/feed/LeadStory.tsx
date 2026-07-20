@@ -7,14 +7,17 @@ interface LeadStoryProps {
   favorites: Set<string>;
   notes: Map<string, { text: string; isPublic: boolean }>;
   publicNotes: Map<string, Array<{ text: string; userId: string }>>;
+  commentaries: Map<string, { videoUrl: string; title?: string; isPublic: boolean }>;
+  publicCommentaries: Map<string, Array<{ videoUrl: string; title?: string; userId: string; authorName: string }>>;
   onToggleFavorite: (id: string) => void;
   onOpenNotes: (id: string, title: string, noteText?: string, noteIsPublic?: boolean) => void;
+  onOpenCommentary: (id: string, title: string, videoUrl?: string, commentaryTitle?: string, isPublic?: boolean) => void;
   onRequestLogin: () => void;
 }
 
 export function LeadStory({
-  articles, userId, favorites, notes, publicNotes,
-  onToggleFavorite, onOpenNotes, onRequestLogin,
+  articles, userId, favorites, notes, publicNotes, commentaries, publicCommentaries,
+  onToggleFavorite, onOpenNotes, onOpenCommentary, onRequestLogin,
 }: LeadStoryProps) {
   if (articles.length < 3) return null;
 
@@ -23,6 +26,7 @@ export function LeadStory({
 
   const cardProps = (article: any) => {
     const noteData = notes.get(article.id);
+    const commentaryData = commentaries.get(article.id);
     return {
       title: article.title,
       snippet: article.snippet,
@@ -38,8 +42,13 @@ export function LeadStory({
       noteText: noteData?.text,
       noteIsPublic: noteData?.isPublic,
       publicNotes: publicNotes.get(article.id) || [],
+      commentaryVideoUrl: commentaryData?.videoUrl,
+      commentaryTitle: commentaryData?.title,
+      commentaryIsPublic: commentaryData?.isPublic,
+      publicCommentaries: publicCommentaries.get(article.id) || [],
       onToggleFavorite,
       onOpenNotes,
+      onOpenCommentary,
       onRequestLogin,
     };
   };

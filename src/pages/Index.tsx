@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ArticleCard } from "@/components/ArticleCard";
 import ArticleNotesModal from "@/components/ArticleNotesModal";
+import CommentaryModal from "@/components/CommentaryModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,25 @@ import { LeadStory } from "@/components/feed/LeadStory";
 import { ArticleGrid } from "@/components/feed/ArticleGrid";
 import { DigestSection } from "@/components/feed/DigestSection";
 import { SiteFooter } from "@/components/feed/SiteFooter";
+
+// Same regex approach as AnalysisEditor's local getVideoThumbnail helper.
+function getVideoThumbnail(videoUrl: string): string | null {
+  if (!videoUrl) return null;
+
+  const youtubeRegex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/;
+  const youtubeMatch = videoUrl.match(youtubeRegex);
+  if (youtubeMatch) {
+    return `https://img.youtube.com/vi/${youtubeMatch[1]}/maxresdefault.jpg`;
+  }
+
+  const vimeoRegex = /(?:vimeo\.com\/)(\d+)/;
+  const vimeoMatch = videoUrl.match(vimeoRegex);
+  if (vimeoMatch) {
+    return `https://vumbnail.com/${vimeoMatch[1]}.jpg`;
+  }
+
+  return null;
+}
 
 // Helper function to get table name for a region
 function getTableNameForRegion(region: string): string | null {
@@ -118,6 +138,8 @@ const Index = ({ user }: IndexProps) => {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState<Map<string, { text: string; isPublic: boolean; userId?: string }>>(new Map());
   const [publicNotes, setPublicNotes] = useState<Map<string, Array<{ text: string; userId: string }>>>(new Map());
+  const [commentaries, setCommentaries] = useState<Map<string, { videoUrl: string; title?: string; isPublic: boolean }>>(new Map());
+  const [publicCommentaries, setPublicCommentaries] = useState<Map<string, Array<{ videoUrl: string; title?: string; userId: string; authorName: string }>>>(new Map());
   const [analyses, setAnalyses] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -136,6 +158,18 @@ const Index = ({ user }: IndexProps) => {
     title: string;
     noteText?: string;
     noteIsPublic?: boolean;
+  }>({
+    isOpen: false,
+    articleId: "",
+    title: "",
+  });
+  const [commentaryModal, setCommentaryModal] = useState<{
+    isOpen: boolean;
+    articleId: string;
+    title: string;
+    videoUrl?: string;
+    commentaryTitle?: string;
+    isPublic?: boolean;
   }>({
     isOpen: false,
     articleId: "",
@@ -237,6 +271,70 @@ const Index = ({ user }: IndexProps) => {
       setPublicNotes(publicNotesMap);
     } catch (error) {
       console.error("Error fetching notes:", error);
+    }
+  };
+
+  // Fetch user video commentaries
+  const fetchCommentaries = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch current user's commentary (both public and private)
+      const { data: ownCommentaries, error: ownError } = await supabase
+        .from("article_commentaries")
+        .select("article_id, video_url, title, is_public")
+        .eq("user_id", user.id);
+
+      if (ownError) throw ownError;
+
+      const commentaryMap = new Map();
+      ownCommentaries?.forEach(commentary => {
+        commentaryMap.set(commentary.article_id, {
+          videoUrl: commentary.video_url,
+          title: commentary.title ?? undefined,
+          isPublic: commentary.is_public
+        });
+      });
+      setCommentaries(commentaryMap);
+
+      // Fetch public commentary from other users
+      const { data: publicCommentaryData, error: publicError } = await supabase
+        .from("article_commentaries")
+        .select("article_id, video_url, title, user_id")
+        .eq("is_public", true)
+        .neq("user_id", user.id);
+
+      if (publicError) {
+        console.error("Error fetching public commentary:", publicError);
+        return;
+      }
+
+      // Resolve author display names in one batched call
+      const distinctUserIds = Array.from(new Set(publicCommentaryData?.map(c => c.user_id) ?? []));
+      const authorNames = new Map<string, string>();
+      if (distinctUserIds.length > 0) {
+        const { data: userInfo } = await (supabase.rpc as any)('get_user_display_info', { user_ids: distinctUserIds });
+        (userInfo as Array<{ user_id: string; email: string; full_name?: string }> | null)?.forEach(info => {
+          authorNames.set(info.user_id, info.full_name || info.email || `User ${info.user_id.substring(0, 8)}`);
+        });
+      }
+
+      // Group public commentary by article_id
+      const publicCommentaryMap = new Map<string, Array<{ videoUrl: string; title?: string; userId: string; authorName: string }>>();
+      publicCommentaryData?.forEach(commentary => {
+        if (!publicCommentaryMap.has(commentary.article_id)) {
+          publicCommentaryMap.set(commentary.article_id, []);
+        }
+        publicCommentaryMap.get(commentary.article_id)!.push({
+          videoUrl: commentary.video_url,
+          title: commentary.title ?? undefined,
+          userId: commentary.user_id,
+          authorName: authorNames.get(commentary.user_id) || `User ${commentary.user_id.substring(0, 8)}`
+        });
+      });
+      setPublicCommentaries(publicCommentaryMap);
+    } catch (error) {
+      console.error("Error fetching commentary:", error);
     }
   };
 
@@ -468,6 +566,136 @@ const Index = ({ user }: IndexProps) => {
       toast({
         title: "Error",
         description: error.message || "Failed to delete note",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Save video commentary
+  const saveCommentary = async (videoUrl: string, commentaryTitle: string, isPublic: boolean) => {
+    if (!user || !commentaryModal.articleId) return;
+
+    try {
+      const thumbnailUrl = getVideoThumbnail(videoUrl);
+
+      const { data: existingCommentary } = await supabase
+        .from("article_commentaries")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("article_id", commentaryModal.articleId)
+        .single();
+
+      let result;
+      if (existingCommentary) {
+        const { data, error } = await supabase
+          .from("article_commentaries")
+          .update({
+            video_url: videoUrl,
+            title: commentaryTitle || null,
+            thumbnail_url: thumbnailUrl,
+            is_public: isPublic,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", existingCommentary.id)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+
+        result = { data, error };
+      } else {
+        const { data, error } = await supabase
+          .from("article_commentaries")
+          .insert({
+            user_id: user.id,
+            article_id: commentaryModal.articleId,
+            video_url: videoUrl,
+            title: commentaryTitle || null,
+            thumbnail_url: thumbnailUrl,
+            is_public: isPublic
+          })
+          .select()
+          .single();
+
+        result = { data, error };
+      }
+
+      if (result.error) throw result.error;
+
+      setCommentaries(prev => {
+        const newMap = new Map(prev);
+        newMap.set(commentaryModal.articleId, { videoUrl, title: commentaryTitle || undefined, isPublic });
+        return newMap;
+      });
+
+      await fetchCommentaries();
+      closeCommentaryModal();
+
+      toast({
+        title: "Commentary saved",
+        description: isPublic ? "Commentary saved and made public" : "Commentary saved privately",
+      });
+    } catch (error: any) {
+      console.error("Error saving commentary:", error);
+      toast({
+        title: "Error",
+        description: `Failed to save commentary: ${error.message || 'Unknown error'}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Open commentary modal
+  const openCommentaryModal = (articleId: string, title: string, videoUrl?: string, commentaryTitle?: string, isPublic?: boolean) => {
+    setCommentaryModal({
+      isOpen: true,
+      articleId,
+      title,
+      videoUrl,
+      commentaryTitle,
+      isPublic
+    });
+  };
+
+  // Close commentary modal
+  const closeCommentaryModal = () => {
+    setCommentaryModal({
+      isOpen: false,
+      articleId: "",
+      title: "",
+    });
+  };
+
+  // Delete video commentary
+  const deleteCommentary = async () => {
+    if (!user || !commentaryModal.articleId) return;
+
+    try {
+      const { error } = await supabase
+        .from("article_commentaries")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("article_id", commentaryModal.articleId);
+
+      if (error) throw error;
+
+      setCommentaries(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(commentaryModal.articleId);
+        return newMap;
+      });
+
+      await fetchCommentaries();
+      closeCommentaryModal();
+
+      toast({
+        title: "Commentary removed",
+        description: "Your commentary has been removed successfully",
+      });
+    } catch (error: any) {
+      console.error("Error deleting commentary:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to remove commentary",
         variant: "destructive",
       });
     }
@@ -947,6 +1175,7 @@ const Index = ({ user }: IndexProps) => {
     if (user) {
       fetchFavorites();
       fetchNotes();
+      fetchCommentaries();
       fetchAnalyses();
       if (user.email) {
         setDigestEmail((prev) => prev || user.email);
@@ -1126,8 +1355,11 @@ const Index = ({ user }: IndexProps) => {
               favorites={favorites}
               notes={notes}
               publicNotes={publicNotes}
+              commentaries={commentaries}
+              publicCommentaries={publicCommentaries}
               onToggleFavorite={toggleFavorite}
               onOpenNotes={openNotesModal}
+              onOpenCommentary={openCommentaryModal}
               onRequestLogin={() => navigate("/auth")}
             />
             <ArticleGrid
@@ -1142,8 +1374,11 @@ const Index = ({ user }: IndexProps) => {
               favorites={favorites}
               notes={notes}
               publicNotes={publicNotes}
+              commentaries={commentaries}
+              publicCommentaries={publicCommentaries}
               onToggleFavorite={toggleFavorite}
               onOpenNotes={openNotesModal}
+              onOpenCommentary={openCommentaryModal}
               onRequestLogin={() => navigate("/auth")}
               onLoadMore={handleLoadMore}
               onFetchHeadlines={handleScrape}
@@ -1165,8 +1400,11 @@ const Index = ({ user }: IndexProps) => {
             favorites={favorites}
             notes={notes}
             publicNotes={publicNotes}
+            commentaries={commentaries}
+            publicCommentaries={publicCommentaries}
             onToggleFavorite={toggleFavorite}
             onOpenNotes={openNotesModal}
+            onOpenCommentary={openCommentaryModal}
             onRequestLogin={() => navigate("/auth")}
             onLoadMore={handleLoadMore}
             onFetchHeadlines={handleScrape}
@@ -1355,6 +1593,18 @@ const Index = ({ user }: IndexProps) => {
         initialNoteText={notesModal.noteText}
         initialIsPublic={notesModal.noteIsPublic}
         articleTitle={notesModal.title}
+      />
+
+      {/* Commentary modal */}
+      <CommentaryModal
+        isOpen={commentaryModal.isOpen}
+        onClose={closeCommentaryModal}
+        onSave={saveCommentary}
+        onDelete={deleteCommentary}
+        initialVideoUrl={commentaryModal.videoUrl}
+        initialTitle={commentaryModal.commentaryTitle}
+        initialIsPublic={commentaryModal.isPublic}
+        articleTitle={commentaryModal.title}
       />
 
       <SiteFooter />

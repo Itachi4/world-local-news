@@ -389,6 +389,50 @@ export type Database = {
           }
         ]
       }
+      article_commentaries: {
+        Row: {
+          id: string
+          user_id: string
+          article_id: string
+          video_url: string
+          title: string | null
+          thumbnail_url: string | null
+          is_public: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          article_id: string
+          video_url: string
+          title?: string | null
+          thumbnail_url?: string | null
+          is_public?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          article_id?: string
+          video_url?: string
+          title?: string | null
+          thumbnail_url?: string | null
+          is_public?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "article_commentaries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       user_analyses: {
         Row: {
           id: string
