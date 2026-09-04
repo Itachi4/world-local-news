@@ -30,16 +30,34 @@ export function ArticleGrid({
   onLoadMore, onFetchHeadlines, searchQuery,
 }: ArticleGridProps) {
   if (loading) {
+    // Skeleton cards instead of a bare spinner — keeps the grid's shape
+    // stable so real content settles into place rather than popping in
+    // against empty space (Apple HIG Loading: show placeholder content
+    // as soon as possible, replace it as real content becomes available).
     return (
-      <div style={{ textAlign: "center", padding: "80px 0" }}>
-        <svg
-          width="32" height="32" viewBox="0 0 24 24" fill="none"
-          stroke="hsl(var(--primary))" strokeWidth="2"
-          style={{ display: "inline-block", animation: "sn-spin .8s linear infinite", marginBottom: 14 }}
-        >
-          <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5"/>
-        </svg>
-        <p style={{ color: "hsl(var(--muted-foreground))", fontSize: 15 }}>Loading articles…</p>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
+          gap: 22,
+        }}
+      >
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              border: "1px solid hsl(var(--border))",
+              borderRadius: "var(--radius)",
+              overflow: "hidden",
+            }}
+          >
+            <div className="loading-shimmer" style={{ aspectRatio: "16 / 9" }} />
+            <div style={{ padding: 14 }}>
+              <div className="loading-shimmer" style={{ height: 13, borderRadius: 3, marginBottom: 8, width: "92%" }} />
+              <div className="loading-shimmer" style={{ height: 13, borderRadius: 3, width: "58%" }} />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -98,8 +116,8 @@ export function ArticleGrid({
           const noteData = notes.get(article.id);
           const commentaryData = commentaries.get(article.id);
           return (
+            <div key={article.id} className="animate-sn-up">
             <ArticleCard
-              key={article.id}
               title={article.title}
               snippet={article.snippet}
               url={article.url}
@@ -123,6 +141,7 @@ export function ArticleGrid({
               onOpenCommentary={onOpenCommentary}
               onRequestLogin={onRequestLogin}
             />
+            </div>
           );
         })}
       </div>

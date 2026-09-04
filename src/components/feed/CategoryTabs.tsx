@@ -45,6 +45,7 @@ export function CategoryTabs({ selectedCategory, onSelect, disabled }: CategoryT
           return (
             <button
               key={value}
+              className="sn-tab"
               onClick={() => !disabled && onSelect(value)}
               style={{
                 flexShrink: 0,

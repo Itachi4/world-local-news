@@ -1130,31 +1130,35 @@ const Index = ({ user }: IndexProps) => {
       await fetchArticles(1, false, selectedCountry);
       if (ignore) return;
 
-      // 2. Fire the scrape and await it — this is what was missing before.
-      //    We surface a "Fetching latest…" state via autoFetching so the user
-      //    knows work is in progress instead of seeing "That's all we have."
+      // 2. Fire a background scrape for this filter combo — don't await it.
+      //    A scrape can take minutes; awaiting it here used to freeze the
+      //    "Fetching latest…" state for that whole time (the same failure
+      //    mode handleScrape had before it became fire-and-forget, see
+      //    commit 000d44e). That's most visible on narrow combos — a specific
+      //    country plus a non-general category — where there's often nothing
+      //    cached yet, so every user hit the full stall. Kick the scrape off
+      //    and do two short, silent refetches instead of blocking on it.
       setAutoFetching(true);
-      try {
-        const categoryValue = selectedCategory === "general" ? null : selectedCategory;
-        const requestBody = {
-          category: categoryValue,
-          region: selectedRegion === "all" ? null : selectedRegion,
-          country: selectedCountry === "all" ? null : selectedCountry,
-          limit: 100,
-        };
-        console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", Country="${selectedCountry}"`);
-        await supabase.functions.invoke("scrape-news", { body: requestBody });
-        if (ignore) return;
+      const categoryValue = selectedCategory === "general" ? null : selectedCategory;
+      const requestBody = {
+        category: categoryValue,
+        region: selectedRegion === "all" ? null : selectedRegion,
+        country: selectedCountry === "all" ? null : selectedCountry,
+        limit: 100,
+      };
+      console.log(`Auto-fetching: Category="${selectedCategory}", Region="${selectedRegion}", Country="${selectedCountry}"`);
+      supabase.functions.invoke("scrape-news", { body: requestBody }).catch(() => {});
 
-        // 3. Give the DB a moment to settle, then refetch to show new rows
-        await new Promise(r => setTimeout(r, 1500));
+      try {
+        // 3. Give the scrape a moment to land rows, then refetch to show them.
+        await new Promise(r => setTimeout(r, 4000));
         if (ignore) return;
         const displayed = await fetchArticles(1, false, selectedCountry);
         if (ignore) return;
 
-        // 4. One retry if the scrape wrote rows but they haven't appeared yet
+        // 4. One more short retry in case rows landed just after the first check.
         if (displayed === 0) {
-          await new Promise(r => setTimeout(r, 2000));
+          await new Promise(r => setTimeout(r, 4000));
           if (ignore) return;
           await fetchArticles(1, false, selectedCountry);
         }

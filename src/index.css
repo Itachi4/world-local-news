@@ -221,4 +221,33 @@
 
   /* Selection highlight */
   ::selection { background: hsl(var(--primary)); color: #fff; }
+
+  /* Feed filter controls — category tabs, region chips, country select.
+     Brief (150ms), matches Apple HIG Motion guidance: feedback for frequent,
+     everyday interactions should be short and precise, not showy. */
+  .sn-tab {
+    transition: color 150ms ease, border-color 150ms ease;
+  }
+  .sn-tab:hover:not(:disabled) {
+    color: hsl(var(--foreground));
+  }
+  .sn-chip {
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+  .sn-chip:hover:not(:disabled) {
+    border-color: hsl(var(--primary));
+  }
+  .sn-select {
+    transition: border-color 150ms ease;
+  }
+  .sn-select:hover {
+    border-color: hsl(var(--primary));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sn-tab, .sn-chip, .sn-select, .animate-sn-up, .loading-shimmer {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
 }

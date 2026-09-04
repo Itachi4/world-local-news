@@ -49,6 +49,7 @@ export function FilterBar({
             return (
               <button
                 key={value}
+                className="sn-chip"
                 onClick={() => { onRegionChange(value); onCountryChange("all"); }}
                 style={{
                   height: 32, padding: "0 13px",
@@ -81,6 +82,7 @@ export function FilterBar({
             <span style={monoLabel}>Country</span>
             <div style={{ position: "relative" }}>
               <select
+                className="sn-select"
                 value={selectedCountry}
                 onChange={(e) => onCountryChange(e.target.value)}
                 style={{

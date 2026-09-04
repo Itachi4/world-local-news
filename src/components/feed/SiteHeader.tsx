@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { User } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -162,7 +162,7 @@ export function SiteHeader({
             }}
           >
             {(["down", "reset", "up"] as const).map((dir, i) => (
-              <>
+              <Fragment key={dir}>
                 {i > 0 && (
                   <span key={`div-${dir}`} style={{ width: 1, height: 18, background: "hsl(var(--border))" }} />
                 )}
@@ -181,7 +181,7 @@ export function SiteHeader({
                 >
                   A
                 </button>
-              </>
+              </Fragment>
             ))}
           </div>
 
