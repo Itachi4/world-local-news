@@ -194,6 +194,9 @@ const FOREIGN_STOPWORDS = new Set([
 // Any letter outside Latin (+ Latin extended) — Arabic, Cyrillic, CJK, Thai, Devanagari, etc.
 const NON_LATIN_LETTER = /[Ͱ-ϿЀ-ԯ֐-ࣿऀ-෿฀-໿က-႟ᄀ-ᇿ぀-ヿ㐀-鿿가-힯]/;
 
+// Same ranges as NON_LATIN_LETTER, as a Postgres regex for server-side filtering.
+const NON_LATIN_SQL = '[\u0370-\u03FF\u0400-\u052F\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]';
+
 function needsTranslation(text: string | null | undefined): boolean {
   if (!text) return false;
   if (NON_LATIN_LETTER.test(text)) return true;
@@ -294,10 +297,14 @@ async function translateToEnglish(text: string): Promise<string | null> {
   return null;
 }
 
+function sourceNameNeedsTranslation(name: string | null | undefined): boolean {
+  return !!name && NON_LATIN_LETTER.test(name);
+}
+
 /** Translates title/snippet/source_name in place where they look non-English. Returns count changed. */
 async function translateArticlesToEnglish(articles: any[], concurrency = 4): Promise<number> {
   const targets = articles.filter((a) =>
-    needsTranslation(a.title) || needsTranslation(a.snippet) || needsTranslation(a.source_name)
+    needsTranslation(a.title) || needsTranslation(a.snippet) || sourceNameNeedsTranslation(a.source_name)
   );
   if (targets.length === 0) return 0;
   console.log(`🌐 Translating ${targets.length} non-English article(s) to English`);
@@ -308,7 +315,10 @@ async function translateArticlesToEnglish(articles: any[], concurrency = 4): Pro
       const article = targets[index++];
       let touched = false;
       for (const field of ['title', 'snippet', 'source_name']) {
-        if (!needsTranslation(article[field])) continue;
+        // Publisher names are proper nouns ("Le Monde", "El País") — only transliterate/translate
+        // them when they're in a non-Latin script.
+        const needed = field === 'source_name' ? sourceNameNeedsTranslation(article[field]) : needsTranslation(article[field]);
+        if (!needed) continue;
         const translated = await translateToEnglish(article[field]);
         if (translated) {
           article[field] = translated;
@@ -339,22 +349,24 @@ async function runTranslateExistingMode(supabase: any, requestBody: any): Promis
         .from(table)
         .select('id,title,snippet,source_name')
         .gte('published_at', since)
+        // Only non-Latin-script rows: Latin-script languages are handled at scrape time, and
+        // matching only rows that always change once translated means a pass can never get
+        // stuck re-picking rows whose "translation" comes back identical.
+        .or(`title.match.${NON_LATIN_SQL},snippet.match.${NON_LATIN_SQL},source_name.match.${NON_LATIN_SQL}`)
         .order('published_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
       if (error) {
         console.error(`❌ translateExisting: failed to read ${table}:`, error);
         break;
       }
-      rows.push(...(data || []).filter((r: any) =>
-        needsTranslation(r.title) || needsTranslation(r.snippet) || needsTranslation(r.source_name)
-      ));
+      rows.push(...(data || []));
       if (!data || data.length < pageSize) break;
     }
     rows.splice(perTableLimit);
     await translateArticlesToEnglish(rows);
     let updated = 0;
     for (const row of rows) {
-      if (needsTranslation(row.title)) continue; // translation failed; leave for next run
+      if (NON_LATIN_LETTER.test(row.title || '')) continue; // translation failed; leave for next run
       const { error: updateError } = await supabase
         .from(table)
         .update({ title: row.title, snippet: row.snippet, source_name: row.source_name })
@@ -1214,6 +1226,15 @@ const englishEditionFallback: Record<string, string> = {
   'CU': 'CA', 'JM': 'CA',
 };
 
+/** Same Google News query on a different English edition (UK, or Canada if already UK). */
+function alternateEditionUrl(url: string): string {
+  const alt = /[?&]gl=GB\b/.test(url) ? 'CA' : 'GB';
+  return url
+    .replace(/([?&])gl=[A-Z]{2}\b/, `$1gl=${alt}`)
+    .replace(/([?&])hl=[A-Za-z-]+/, `$1hl=en-${alt}`)
+    .replace(/([?&])ceid=[A-Z]{2}:[A-Za-z-]+/, `$1ceid=${alt}:en`);
+}
+
 function getGoogleNewsGl(countryCode: string): { gl: string; ceid: string } {
   const fallback = englishEditionFallback[countryCode];
   if (fallback) {
@@ -1837,32 +1858,39 @@ async function fetchNewsFromRegion(region: RegionConfig, category: string | null
       // Fetch from all URLs and combine results
       const allArticles: any[] = [];
 
-      for (const url of urls) {
-        try {
-          const response = await fetchWithRetry(url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
-              'Cache-Control': 'no-cache'
+      for (const primaryUrl of urls) {
+        // Google intermittently throttles Supabase's egress IPs per edition (en-US especially).
+        // If the primary edition fails or comes back empty, retry the same query once on
+        // another English edition rather than losing the country for the day.
+        for (const url of [primaryUrl, alternateEditionUrl(primaryUrl)]) {
+          try {
+            const response = await fetchWithRetry(url, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
+                'Cache-Control': 'no-cache'
+              }
+            }, 2)
+
+            if (!response.ok) {
+              console.error(`Failed to fetch news from ${url}: ${response.status}`)
+              continue
             }
-          }, 2)
 
-          if (!response.ok) {
-            console.error(`Failed to fetch news from ${url}: ${response.status}`)
-            continue
+            const xmlText = await response.text()
+            console.log(`📥 RSS feed response length: ${xmlText.length} characters`);
+            console.log(`📥 First 500 chars of RSS: ${xmlText.substring(0, 500)}`);
+
+            const parsedArticles = await parseRSSFeed(xmlText, country.name, country.code, region.region, category, maxArticles)
+            console.log(`✅ Fetched ${parsedArticles.length} articles from ${url}`);
+
+            if (parsedArticles.length === 0) continue;
+            allArticles.push(...parsedArticles);
+            break;
+          } catch (error) {
+            console.error(`Error fetching from ${url}:`, error);
+            // Fall through to the alternate edition
           }
-
-          const xmlText = await response.text()
-          console.log(`📥 RSS feed response length: ${xmlText.length} characters`);
-          console.log(`📥 First 500 chars of RSS: ${xmlText.substring(0, 500)}`);
-
-          const parsedArticles = await parseRSSFeed(xmlText, country.name, country.code, region.region, category, maxArticles)
-          console.log(`✅ Fetched ${parsedArticles.length} articles from ${url}`);
-
-          allArticles.push(...parsedArticles);
-        } catch (error) {
-          console.error(`Error fetching from ${url}:`, error);
-          // Continue to next URL
         }
       }
 
