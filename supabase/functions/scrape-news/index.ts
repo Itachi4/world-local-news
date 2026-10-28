@@ -70,10 +70,10 @@ function getLocaleForCountry(countryCode: string): string {
     // Africa
     'ZA': 'en-ZA', // South Africa
     'NG': 'en-NG', // Nigeria
-    'EG': 'ar-EG', // Egypt
+    'EG': 'en-GB', // Egypt (no English edition; UK edition avoids Arabic results)
     'KE': 'en-KE', // Kenya
     'GH': 'en-GH', // Ghana
-    'MA': 'ar-MA', // Morocco
+    'MA': 'en-GB', // Morocco (no English edition; UK edition avoids Arabic/French results)
     'ET': 'en-ET', // Ethiopia
     'TZ': 'en-TZ', // Tanzania
     'DZ': 'en-GB', // Algeria (UK edition for English results)
@@ -172,6 +172,174 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+// --- English translation -----------------------------------------------------------------
+// Some feeds (and publishers picked up by them) return headlines in Arabic, French, Spanish,
+// etc. Everything is shown in English, so non-English titles/snippets/source names are
+// translated before saving. Uses Google's public translate endpoint (no key needed).
+
+const ENGLISH_STOPWORDS = new Set([
+  'the', 'of', 'and', 'to', 'in', 'for', 'on', 'is', 'with', 'as', 'at', 'by', 'from', 'after',
+  'over', 'new', 'says', 'are', 'was', 'will', 'its', 'his', 'her', 'their', 'has', 'have', 'be',
+  'an', 'a', 'amid', 'into', 'about', 'how', 'why', 'what', 'who', 'not', 'more', 'than',
+]);
+const FOREIGN_STOPWORDS = new Set([
+  'de', 'la', 'el', 'los', 'las', 'del', 'y', 'en', 'que', 'por', 'para', 'con', 'una', 'un',
+  'le', 'les', 'des', 'du', 'et', 'est', 'dans', 'pour', 'sur', 'au', 'aux', 'der', 'die', 'das',
+  'und', 'mit', 'von', 'für', 'ist', 'den', 'il', 'di', 'che', 'per', 'della', 'do', 'da', 'em',
+  'não', 'och', 'på', 'är', 'att', 'het', 'een', 'van', 'z', 'na', 'się', 'nie', 'w',
+  'al', 'se', 'su', 'sus', 'ao', 'dos', 'das', 'zu', 'im', 'auf', 'une', 'sont', 'pas',
+]);
+// Any letter outside Latin (+ Latin extended) — Arabic, Cyrillic, CJK, Thai, Devanagari, etc.
+const NON_LATIN_LETTER = /[Ͱ-ϿЀ-ԯ֐-ࣿऀ-෿฀-໿က-႟ᄀ-ᇿ぀-ヿ㐀-鿿가-힯]/;
+
+function needsTranslation(text: string | null | undefined): boolean {
+  if (!text) return false;
+  if (NON_LATIN_LETTER.test(text)) return true;
+  const words = text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
+  let english = 0;
+  let foreign = 0;
+  for (const w of words) {
+    if (ENGLISH_STOPWORDS.has(w)) english++;
+    else if (FOREIGN_STOPWORDS.has(w)) foreign++;
+  }
+  // Translating text that was already English is harmless (it comes back unchanged), so lean
+  // towards translating when there is any foreign signal and no English one.
+  return foreign > english;
+}
+
+let translateServiceDown = false;
+let translateConsecutiveFailures = 0;
+
+async function translateToEnglish(text: string): Promise<string | null> {
+  if (translateServiceDown) return null;
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text.slice(0, 1500))}`;
+    const res = await fetchWithTimeout(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36' },
+    }, 5000);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const data = await res.json();
+    const translated = (data?.[0] || []).map((seg: any[]) => seg?.[0] || '').join('').trim();
+    translateConsecutiveFailures = 0;
+    return translated || null;
+  } catch (e) {
+    translateConsecutiveFailures += 1;
+    if (translateConsecutiveFailures >= 5) {
+      translateServiceDown = true;
+      console.warn('⚠️ Translation failed 5 times in a row — skipping further translations this run.');
+    }
+    console.warn('⚠️ Translation failed:', e);
+    return null;
+  }
+}
+
+/** Translates title/snippet/source_name in place where they look non-English. Returns count changed. */
+async function translateArticlesToEnglish(articles: any[], concurrency = 4): Promise<number> {
+  const targets = articles.filter((a) =>
+    needsTranslation(a.title) || needsTranslation(a.snippet) || needsTranslation(a.source_name)
+  );
+  if (targets.length === 0) return 0;
+  console.log(`🌐 Translating ${targets.length} non-English article(s) to English`);
+  let changed = 0;
+  let index = 0;
+  const worker = async () => {
+    while (index < targets.length) {
+      const article = targets[index++];
+      let touched = false;
+      for (const field of ['title', 'snippet', 'source_name']) {
+        if (!needsTranslation(article[field])) continue;
+        const translated = await translateToEnglish(article[field]);
+        if (translated) {
+          article[field] = translated;
+          touched = true;
+        }
+      }
+      if (touched) changed++;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, worker));
+  return changed;
+}
+
+/** One-off/periodic fix-up: translate already-stored non-English rows from the last 7 days. */
+async function runTranslateExistingMode(supabase: any, requestBody: any): Promise<Response> {
+  const allTables = ['articles_africa', 'articles_asia', 'articles_europe', 'articles_north_america', 'articles_oceania', 'articles_south_america'];
+  // Pass { region } to process one table per call and stay well inside the 150s limit.
+  const regionTable = typeof requestBody?.region === 'string' ? getTableNameForRegion(requestBody.region) : null;
+  const tables = regionTable ? [regionTable] : allTables;
+  const perTableLimit = Math.min(Math.max(Number(requestBody?.perTableLimit) || 40, 1), 200);
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const summary: Record<string, number> = {};
+  const pageSize = 1000; // PostgREST caps each response at 1000 rows
+  for (const table of tables) {
+    const rows: any[] = [];
+    for (let offset = 0; rows.length < perTableLimit; offset += pageSize) {
+      const { data, error } = await supabase
+        .from(table)
+        .select('id,title,snippet,source_name')
+        .gte('published_at', since)
+        .order('published_at', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (error) {
+        console.error(`❌ translateExisting: failed to read ${table}:`, error);
+        break;
+      }
+      rows.push(...(data || []).filter((r: any) =>
+        needsTranslation(r.title) || needsTranslation(r.snippet) || needsTranslation(r.source_name)
+      ));
+      if (!data || data.length < pageSize) break;
+    }
+    rows.splice(perTableLimit);
+    await translateArticlesToEnglish(rows);
+    let updated = 0;
+    for (const row of rows) {
+      if (needsTranslation(row.title)) continue; // translation failed; leave for next run
+      const { error: updateError } = await supabase
+        .from(table)
+        .update({ title: row.title, snippet: row.snippet, source_name: row.source_name })
+        .eq('id', row.id);
+      if (!updateError) updated++;
+    }
+    summary[table] = updated;
+  }
+  return new Response(JSON.stringify({ success: true, mode: 'translateExisting', updated: summary }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status: 200,
+  });
+}
+
+/**
+ * Region-wide scrapes keep only `targetLimit` articles; picking purely newest-first lets a few
+ * high-volume countries crowd out the rest. Give each country an equal share first (with the
+ * usual source-diversity rules inside each share), then fill any leftover slots newest-first.
+ */
+function balanceAcrossCountries(articles: any[], targetLimit: number): any[] {
+  const groups = new Map<string, any[]>();
+  for (const article of articles) {
+    const key = article.source_country || 'unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(article);
+  }
+  if (groups.size <= 1) return applyDiversityRulesNewestFirst(articles, targetLimit, 0.25, 2);
+
+  const quota = Math.max(1, Math.floor(targetLimit / groups.size));
+  const picked: any[] = [];
+  const pickedUrls = new Set<string>();
+  for (const group of groups.values()) {
+    for (const article of applyDiversityRulesNewestFirst(group, quota, 0.5, 2)) {
+      picked.push(article);
+      pickedUrls.add(article.url);
+    }
+  }
+  if (picked.length < targetLimit) {
+    const leftovers = articles.filter((a) => !pickedUrls.has(a.url));
+    picked.push(...applyDiversityRulesNewestFirst(leftovers, targetLimit - picked.length, 0.25, 2));
+  }
+  return picked
+    .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+    .slice(0, targetLimit);
 }
 
 function normalizeEscapedUrl(input: string): string {
@@ -982,7 +1150,7 @@ const nonEnglishCountries = new Set([
 // non-English countries already share (see the NA timeout notes on the category crons).
 const englishEditionFallback: Record<string, string> = {
   'RU': 'GB', 'UA': 'GB', 'PT': 'GB', 'GR': 'GB', 'NO': 'GB', 'CH': 'GB', 'BE': 'GB', 'AT': 'GB',
-  'TR': 'GB', 'DZ': 'GB', 'SN': 'GB', 'BO': 'GB', 'PY': 'GB',
+  'TR': 'GB', 'DZ': 'GB', 'SN': 'GB', 'BO': 'GB', 'PY': 'GB', 'EG': 'GB', 'MA': 'GB',
   'VN': 'SG', 'TH': 'SG',
   'CU': 'CA', 'JM': 'CA',
 };
@@ -2278,6 +2446,8 @@ Deno.serve(async (req) => {
   jinaBalanceExhausted = false;
   togetherServiceDown = false;
   togetherConsecutiveFailures = 0;
+  translateServiceDown = false;
+  translateConsecutiveFailures = 0;
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -2333,6 +2503,10 @@ Deno.serve(async (req) => {
 
     if (backfillImages === true) {
       return await runBackfillImagesMode(supabase, requestBody);
+    }
+
+    if (requestBody?.translateExisting === true) {
+      return await runTranslateExistingMode(supabase, requestBody);
     }
 
 
@@ -2464,13 +2638,12 @@ Deno.serve(async (req) => {
       renderApiFailures: 0,
     };
 
-    // Keep newest-first ordering while enforcing source diversity constraints.
-    const articlesToSave = applyDiversityRulesNewestFirst(
-      newestFirstArticles,
-      targetLimit,
-      0.25, // max 25% per source
-      2 // max 2 consecutive from same source
-    );
+    // Keep newest-first ordering while enforcing source diversity constraints. Multi-country
+    // requests also get a per-country share so every country in the region is represented.
+    const articlesToSave = balanceAcrossCountries(newestFirstArticles, targetLimit);
+
+    const translatedCount = await translateArticlesToEnglish(articlesToSave);
+    if (translatedCount > 0) console.log(`🌐 Translated ${translatedCount} article(s) to English`);
 
     // Enrich only selected feed candidates so compute budget goes to visible cards.
     const isAllRegionsRequest = !(region && typeof region === 'string' && region.trim().length > 0);
