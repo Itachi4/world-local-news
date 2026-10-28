@@ -15,12 +15,15 @@ import { UserContentViewer } from "@/components/UserContentViewer";
 import InteractiveGlobeView from "@/components/InteractiveGlobeView";
 import { COUNTRIES_BY_REGION, REGION_OPTIONS } from "@/lib/countryMap";
 import { SiteHeader } from "@/components/feed/SiteHeader";
+import { HeroSection } from "@/components/feed/HeroSection";
 import { isBrandingImage } from "@/lib/brandImage";
 import { CategoryTabs } from "@/components/feed/CategoryTabs";
 import { FilterBar } from "@/components/feed/FilterBar";
 import { FeedTabs } from "@/components/feed/FeedTabs";
 import { LeadStory } from "@/components/feed/LeadStory";
 import { ArticleGrid } from "@/components/feed/ArticleGrid";
+import { RegionSnapshot } from "@/components/feed/RegionSnapshot";
+import { CapabilitiesStrip } from "@/components/feed/CapabilitiesStrip";
 import { DigestSection } from "@/components/feed/DigestSection";
 import { SiteFooter } from "@/components/feed/SiteFooter";
 
@@ -141,6 +144,8 @@ const Index = ({ user }: IndexProps) => {
   const [commentaries, setCommentaries] = useState<Map<string, { videoUrl: string; title?: string; isPublic: boolean }>>(new Map());
   const [publicCommentaries, setPublicCommentaries] = useState<Map<string, Array<{ videoUrl: string; title?: string; userId: string; authorName: string }>>>(new Map());
   const [analyses, setAnalyses] = useState<any[]>([]);
+  const [regionSnapshots, setRegionSnapshots] = useState<{ region: string; article: any }[]>([]);
+  const [regionSnapshotsLoading, setRegionSnapshotsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [fontScale, setFontScale] = useState(100);
@@ -201,6 +206,35 @@ const Index = ({ user }: IndexProps) => {
     is_active: boolean;
     updated_at: string;
     created_at?: string;
+  };
+
+  // One recent, real-image story per region for the "Reports across six
+  // continents" snapshot strip — independent of the region/category filters
+  // so it always shows all six regions regardless of what the user is browsing.
+  const fetchRegionSnapshots = async () => {
+    setRegionSnapshotsLoading(true);
+    try {
+      const regions = REGION_OPTIONS.filter((r) => r.value !== "all").map((r) => r.value);
+      const results = await Promise.all(
+        regions.map(async (region) => {
+          const tableName = getTableNameForRegion(region);
+          if (!tableName) return null;
+          const { data } = await (supabase.from(tableName as any) as any)
+            .select("*")
+            .not("image_url", "is", null)
+            .order("published_at", { ascending: false })
+            .limit(5);
+          const rows: any[] = data || [];
+          const article = rows.find((a) => hasRealImage(a)) || rows[0];
+          return article ? { region, article } : null;
+        })
+      );
+      setRegionSnapshots(results.filter((r): r is { region: string; article: any } => !!r));
+    } catch (error) {
+      console.error("Error fetching region snapshots:", error);
+    } finally {
+      setRegionSnapshotsLoading(false);
+    }
   };
 
   // Fetch user favorites
@@ -1196,6 +1230,10 @@ const Index = ({ user }: IndexProps) => {
   }, []);
 
   useEffect(() => {
+    fetchRegionSnapshots();
+  }, []);
+
+  useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.fontSize = `${fontScale}%`;
     if (typeof window !== "undefined") {
@@ -1203,15 +1241,6 @@ const Index = ({ user }: IndexProps) => {
     }
   }, [fontScale]);
 
-  const handleFontDown = () => {
-    const idx = FONT_SCALE_STEPS.indexOf(fontScale);
-    if (idx > 0) setFontScale(FONT_SCALE_STEPS[idx - 1]);
-  };
-  const handleFontReset = () => setFontScale(100);
-  const handleFontUp = () => {
-    const idx = FONT_SCALE_STEPS.indexOf(fontScale);
-    if (idx < FONT_SCALE_STEPS.length - 1) setFontScale(FONT_SCALE_STEPS[idx + 1]);
-  };
 
   const toggleDigestCategory = (categoryValue: string) => {
     setDigestCategories((prev) => {
@@ -1322,9 +1351,11 @@ const Index = ({ user }: IndexProps) => {
         onToggleSearch={() => setSearchOpen(s => !s)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onFontDown={handleFontDown}
-        onFontReset={handleFontReset}
-        onFontUp={handleFontUp}
+        fontScale={fontScale}
+        onFontScaleChange={setFontScale}
+      />
+      <HeroSection
+        onRegionSelect={(region) => { setSelectedRegion(region); setSelectedCountry("all"); }}
       />
       <CategoryTabs
         selectedCategory={selectedCategory}
@@ -1340,8 +1371,10 @@ const Index = ({ user }: IndexProps) => {
         onFetchHeadlines={handleScrape}
       />
 
-      {/* Feed body */}
-      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 28px 56px" }}>
+      {/* Feed body — id="feed" is the scroll target for the hero's "Read Today's
+          Global Edition" anchor button. HeroSection's <h1> is the page's real
+          top-level heading now, so no separate sr-only h1 is needed here. */}
+      <main id="feed" style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 28px 56px" }}>
         <FeedTabs
           activeTab={activeTab}
           onTabChange={(tab) => setActiveTab(tab)}
@@ -1355,6 +1388,20 @@ const Index = ({ user }: IndexProps) => {
           <>
             <LeadStory
               articles={leadArticles.slice(0, 3)}
+              userId={user?.id}
+              favorites={favorites}
+              notes={notes}
+              publicNotes={publicNotes}
+              commentaries={commentaries}
+              publicCommentaries={publicCommentaries}
+              onToggleFavorite={toggleFavorite}
+              onOpenNotes={openNotesModal}
+              onOpenCommentary={openCommentaryModal}
+              onRequestLogin={() => navigate("/auth")}
+            />
+            <RegionSnapshot
+              snapshots={regionSnapshots}
+              loading={regionSnapshotsLoading}
               userId={user?.id}
               favorites={favorites}
               notes={notes}
@@ -1575,6 +1622,8 @@ const Index = ({ user }: IndexProps) => {
         )}
 
       </main>
+
+      <CapabilitiesStrip />
 
       <DigestSection
         digestEmail={digestEmail}

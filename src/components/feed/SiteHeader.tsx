@@ -1,7 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
-import { User } from "lucide-react";
-import { ThemeToggle } from "./ThemeToggle";
+import { User, Contrast } from "lucide-react";
 
 interface SiteHeaderProps {
   user: any;
@@ -14,13 +13,17 @@ interface SiteHeaderProps {
   onToggleSearch: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  /** Decrease font scale one step */
-  onFontDown: () => void;
-  /** Reset font scale to 100 % */
-  onFontReset: () => void;
-  /** Increase font scale one step */
-  onFontUp: () => void;
+  /** Current reading text-size percentage (90 / 100 / 112). */
+  fontScale: number;
+  /** Set the text-size percentage directly. */
+  onFontScaleChange: (scale: number) => void;
 }
+
+const TEXT_SIZE_OPTIONS: { value: number; label: string }[] = [
+  { value: 90,  label: "Small" },
+  { value: 100, label: "Standard" },
+  { value: 112, label: "Large" },
+];
 
 const navLinkStyle: React.CSSProperties = {
   padding: "7px 11px",
@@ -45,9 +48,13 @@ const iconBtnStyle: React.CSSProperties = {
 export function SiteHeader({
   user, onLogin, onProfile, onOpenGlobe,
   searchOpen, onToggleSearch, searchQuery, onSearchChange,
-  onFontDown, onFontReset, onFontUp,
+  fontScale, onFontScaleChange,
 }: SiteHeaderProps) {
   const [hovered, setHovered] = useState<string | null>(null);
+
+  const publishedDate = new Date().toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
 
   return (
     <div
@@ -57,6 +64,28 @@ export function SiteHeader({
         borderBottom: "1px solid hsl(var(--border))",
       }}
     >
+      {/* Utility bar */}
+      <div
+        style={{
+          borderBottom: "1px solid hsl(var(--border))",
+          background: "hsl(var(--card))",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1280, margin: "0 auto", padding: "6px 28px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            fontSize: 11.5, color: "hsl(var(--muted-foreground))",
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "hsl(var(--terracotta))" }} />
+            Verified Wire Edition
+          </span>
+          <span>Published {publishedDate} &middot; Daily Global Cycle</span>
+        </div>
+      </div>
+
       {/* Main header row */}
       <div
         style={{
@@ -94,7 +123,7 @@ export function SiteHeader({
           </span>
           <span
             style={{
-              fontFamily: '"IBM Plex Mono", monospace',
+              fontFamily: "'Public Sans', sans-serif",
               fontSize: 9.5,
               letterSpacing: "0.22em",
               color: "hsl(var(--muted-foreground))",
@@ -153,7 +182,7 @@ export function SiteHeader({
             Globe
           </button>
 
-          {/* A / A / A font-scale control */}
+          {/* Text-size control — direct 3-way selector over the real Small/Standard/Large steps */}
           <div
             style={{
               display: "flex", alignItems: "center",
@@ -161,29 +190,52 @@ export function SiteHeader({
               borderRadius: 3, height: 34, overflow: "hidden",
             }}
           >
-            {(["down", "reset", "up"] as const).map((dir, i) => (
-              <Fragment key={dir}>
-                {i > 0 && (
-                  <span key={`div-${dir}`} style={{ width: 1, height: 18, background: "hsl(var(--border))" }} />
-                )}
-                <button
-                  key={dir}
-                  onClick={dir === "down" ? onFontDown : dir === "reset" ? onFontReset : onFontUp}
-                  style={{
-                    width: 30, height: "100%", border: 0,
-                    background: "hsl(var(--card))",
-                    color: dir === "reset" ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                    cursor: "pointer",
-                    fontFamily: "Newsreader, serif",
-                    fontSize: dir === "down" ? 12 : dir === "reset" ? 15 : 18,
-                  }}
-                  aria-label={`Font size ${dir}`}
-                >
-                  A
-                </button>
-              </Fragment>
-            ))}
+            {TEXT_SIZE_OPTIONS.map(({ value, label }, i) => {
+              const active = fontScale === value;
+              return (
+                <Fragment key={value}>
+                  {i > 0 && (
+                    <span style={{ width: 1, height: 18, background: "hsl(var(--border))" }} />
+                  )}
+                  <button
+                    onClick={() => onFontScaleChange(value)}
+                    style={{
+                      height: "100%", border: 0, padding: "0 10px",
+                      background: active ? "hsl(var(--accent-wash))" : "hsl(var(--card))",
+                      color: active ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
+                      cursor: "pointer",
+                      fontFamily: "'Public Sans', sans-serif",
+                      fontSize: 12, fontWeight: active ? 700 : 500,
+                    }}
+                    aria-pressed={active}
+                    aria-label={`Text size: ${label}`}
+                  >
+                    {label}
+                  </button>
+                </Fragment>
+              );
+            })}
           </div>
+
+          {/* High Contrast — not implemented yet; kept visible so the option isn't a surprise later, disabled rather than functional */}
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            aria-label="High contrast display, coming soon"
+            style={{
+              ...iconBtnStyle,
+              display: "flex", alignItems: "center", gap: 5,
+              width: "auto", padding: "0 10px",
+              opacity: 0.5,
+              cursor: "not-allowed",
+              fontFamily: "'Public Sans', sans-serif",
+              fontSize: 11.5, fontWeight: 500,
+            }}
+          >
+            <Contrast size={14} />
+            Soon
+          </button>
 
           {/* Search toggle */}
           <button
@@ -200,9 +252,6 @@ export function SiteHeader({
               <path d="m21 21-4.3-4.3"/>
             </svg>
           </button>
-
-          {/* Theme toggle */}
-          <ThemeToggle />
 
           {/* Sign in / account */}
           {user ? (
@@ -274,7 +323,7 @@ export function SiteHeader({
             />
             <span
               style={{
-                fontFamily: '"IBM Plex Mono", monospace',
+                fontFamily: "'Public Sans', sans-serif",
                 fontSize: 11, color: "hsl(var(--muted-foreground))",
                 cursor: "pointer",
               }}

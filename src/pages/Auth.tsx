@@ -159,7 +159,7 @@ const AuthPage = () => {
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
           <span style={{ width: 11, height: 11, background: "hsl(var(--primary))", display: "inline-block" }} />
-          <span style={{ fontFamily: "'Newsreader', serif", fontWeight: 600, fontSize: 24, color: "hsl(var(--background))" }}>
+          <span style={{ fontFamily: "Newsreader, serif", fontWeight: 600, fontSize: 24, color: "hsl(var(--background))" }}>
             Snew<span style={{ color: "hsl(var(--primary))" }}>.</span>
           </span>
         </div>
@@ -168,7 +168,7 @@ const AuthPage = () => {
         <div>
           <div
             style={{
-              fontFamily: "'IBM Plex Mono', monospace",
+              fontFamily: "'Public Sans', sans-serif",
               fontSize: 10, letterSpacing: ".18em",
               color: "hsl(var(--accent-ink))",
               textTransform: "uppercase", marginBottom: 18,
@@ -178,7 +178,7 @@ const AuthPage = () => {
           </div>
           <h2
             style={{
-              fontFamily: "'Newsreader', serif",
+              fontFamily: "Newsreader, serif",
               fontWeight: 500, fontSize: 38,
               lineHeight: 1.12, letterSpacing: "-.02em",
               margin: "0 0 18px",
@@ -193,18 +193,18 @@ const AuthPage = () => {
               color: "hsl(var(--ink-3))", margin: 0, maxWidth: "42ch",
             }}
           >
-            Save stories, write analysis, and follow the headlines from 30+ countries. Free, forever.
+            Save stories, write analysis, and follow the headlines from 70+ countries. Free, forever.
           </p>
         </div>
 
         {/* Stats line */}
         <div
           style={{
-            fontFamily: "'IBM Plex Mono', monospace",
+            fontFamily: "'Public Sans', sans-serif",
             fontSize: 11, color: "rgba(255,255,255,.4)",
           }}
         >
-          30+ countries · 6 regions
+          70+ countries · 6 regions
         </div>
       </div>
 
@@ -219,7 +219,7 @@ const AuthPage = () => {
         <div style={{ width: "100%", maxWidth: 360 }}>
           <h1
             style={{
-              fontFamily: "'Newsreader', serif",
+              fontFamily: "Newsreader, serif",
               fontWeight: 600, fontSize: 30,
               letterSpacing: "-.015em",
               margin: "0 0 6px",

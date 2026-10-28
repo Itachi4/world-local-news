@@ -21,7 +21,7 @@ export default function Unsubscribe() {
     if (!token) { setStatus("invalid"); return; }
 
     (async () => {
-      const { data, error } = await (supabase.from("digest_subscriptions") as any)
+      const { data, error } = await (supabase as any).from("digest_subscriptions")
         .select("id, is_active")
         .eq("unsubscribe_token", token)
         .maybeSingle();
@@ -29,7 +29,7 @@ export default function Unsubscribe() {
       if (error || !data) { setStatus("invalid"); return; }
       if (!data.is_active) { setStatus("already"); return; }
 
-      const { error: updateError } = await (supabase.from("digest_subscriptions") as any)
+      const { error: updateError } = await (supabase as any).from("digest_subscriptions")
         .update({ is_active: false })
         .eq("unsubscribe_token", token);
 
@@ -53,7 +53,7 @@ export default function Unsubscribe() {
       {/* Logo */}
       <Link to="/" style={{ display: "flex", alignItems: "baseline", gap: 8, textDecoration: "none", marginBottom: 48 }}>
         <span style={{ width: 10, height: 10, background: "hsl(var(--primary))", display: "inline-block" }} />
-        <span style={{ fontFamily: "'Newsreader', serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
+        <span style={{ fontFamily: "Newsreader, serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
           Snew<span style={{ color: "hsl(var(--primary))" }}>.</span>
         </span>
       </Link>
@@ -87,7 +87,7 @@ export default function Unsubscribe() {
 
         <h1
           style={{
-            fontFamily: "'Newsreader', serif",
+            fontFamily: "Newsreader, serif",
             fontWeight: 600, fontSize: 28,
             letterSpacing: "-.015em",
             margin: "0 0 12px",

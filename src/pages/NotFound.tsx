@@ -20,7 +20,7 @@ const NotFound = () => {
     >
       <div
         style={{
-          fontFamily: "'Newsreader', serif",
+          fontFamily: "Newsreader, serif",
           fontWeight: 600, fontSize: 120,
           lineHeight: 1, letterSpacing: "-.03em",
           color: "hsl(var(--primary))",
@@ -31,7 +31,7 @@ const NotFound = () => {
 
       <div
         style={{
-          fontFamily: "'IBM Plex Mono', monospace",
+          fontFamily: "'Public Sans', sans-serif",
           fontSize: 11, letterSpacing: ".16em",
           color: "hsl(var(--muted-foreground))",
           textTransform: "uppercase",
@@ -43,7 +43,7 @@ const NotFound = () => {
 
       <h1
         style={{
-          fontFamily: "'Newsreader', serif",
+          fontFamily: "Newsreader, serif",
           fontWeight: 600, fontSize: 30,
           letterSpacing: "-.015em",
           margin: "0 0 12px",

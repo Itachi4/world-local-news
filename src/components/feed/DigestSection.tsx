@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Mail } from "lucide-react";
 import { FEED_CATEGORIES } from "./CategoryTabs";
 
 interface DigestSectionProps {
@@ -25,86 +26,84 @@ export function DigestSection({
   onSubscribe, subscribing, subscribed,
 }: DigestSectionProps) {
   return (
-    <section
-      style={{
-        background: "hsl(var(--foreground))",
-        color: "hsl(var(--background))",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 1280, margin: "0 auto",
-          padding: "60px 28px",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 60,
-          alignItems: "center",
-        }}
-      >
-        {/* Left — headline */}
-        <div>
-          <div
-            style={{
-              fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: 10,
-              letterSpacing: ".18em",
-              color: "hsl(var(--accent-ink))",
-              textTransform: "uppercase",
-              marginBottom: 16,
-            }}
-          >
-            The Morning Wire
-          </div>
-          <h2
-            style={{
-              fontFamily: "'Newsreader', serif",
-              fontWeight: 500,
-              fontSize: 38,
-              lineHeight: 1.08,
-              letterSpacing: "-.02em",
-              margin: "0 0 16px",
-              color: "hsl(var(--background))",
-            }}
-          >
-            The world, edited down to what matters — in your inbox.
-          </h2>
-          <p
-            style={{
-              fontSize: 15,
-              lineHeight: 1.6,
-              color: "hsl(var(--ink-3))",
-              margin: 0,
-              maxWidth: "46ch",
-            }}
-          >
-            A human-curated brief drawing from 30+ countries. No autoplay, no clickbait. Choose your cadence and the beats you care about.
-          </p>
-        </div>
-
-        {/* Right — form card */}
+    <section style={{ background: "hsl(var(--background))" }}>
+      <div style={{ maxWidth: 620, margin: "0 auto", padding: "56px 28px" }}>
         <div
           style={{
             background: "hsl(var(--card))",
             color: "hsl(var(--foreground))",
+            border: "1.5px solid hsl(var(--border))",
             borderRadius: 6,
-            padding: 28,
-            boxShadow: "0 4px 24px hsl(var(--shadow))",
+            padding: "36px 32px",
+            textAlign: "center",
           }}
         >
-          {subscribed ? (
-            <SubscribedState digestFrequency={digestFrequency} onReset={() => onFrequencyChange(digestFrequency)} />
-          ) : (
-            <SubscribeForm
-              digestEmail={digestEmail}
-              onEmailChange={onEmailChange}
-              digestFrequency={digestFrequency}
-              onFrequencyChange={onFrequencyChange}
-              digestCategories={digestCategories}
-              onToggleCategory={onToggleCategory}
-              onSubscribe={onSubscribe}
-              subscribing={subscribing}
-            />
-          )}
+          <div
+            style={{
+              width: 52, height: 52, borderRadius: "50%",
+              background: "hsl(var(--accent-wash))",
+              display: "grid", placeItems: "center",
+              color: "hsl(var(--primary))",
+              margin: "0 auto 16px",
+            }}
+          >
+            <Mail size={24} strokeWidth={1.75} />
+          </div>
+          <div
+            style={{
+              fontFamily: "'Public Sans', sans-serif",
+              fontSize: 10,
+              letterSpacing: ".18em",
+              color: "hsl(var(--terracotta))",
+              textTransform: "uppercase",
+              fontWeight: 700,
+              marginBottom: 10,
+            }}
+          >
+            Free Morning Delivery
+          </div>
+          <h2
+            style={{
+              fontFamily: "Newsreader, serif",
+              fontWeight: 600,
+              fontSize: 28,
+              lineHeight: 1.2,
+              letterSpacing: "-.01em",
+              margin: "0 0 12px",
+              color: "hsl(var(--foreground))",
+            }}
+          >
+            Receive today's wire in your inbox
+          </h2>
+          <p
+            style={{
+              fontFamily: "'Source Serif 4', serif",
+              fontSize: 15,
+              lineHeight: 1.6,
+              color: "hsl(var(--ink-3))",
+              margin: "0 auto 24px",
+              maxWidth: "42ch",
+            }}
+          >
+            A quiet, thoughtful briefing drawn from 70+ countries. No autoplay, no clickbait, no advertisements. Choose daily or weekly and cancel with one click any time.
+          </p>
+
+          <div style={{ textAlign: "left" }}>
+            {subscribed ? (
+              <SubscribedState digestFrequency={digestFrequency} onReset={() => onFrequencyChange(digestFrequency)} />
+            ) : (
+              <SubscribeForm
+                digestEmail={digestEmail}
+                onEmailChange={onEmailChange}
+                digestFrequency={digestFrequency}
+                onFrequencyChange={onFrequencyChange}
+                digestCategories={digestCategories}
+                onToggleCategory={onToggleCategory}
+                onSubscribe={onSubscribe}
+                subscribing={subscribing}
+              />
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -139,7 +138,7 @@ function SubscribedState({
       </div>
       <div
         style={{
-          fontFamily: "'Newsreader', serif",
+          fontFamily: "Newsreader, serif",
           fontSize: 24,
           color: "hsl(var(--foreground))",
         }}
@@ -215,7 +214,7 @@ function SubscribeForm({
       {/* Topics label */}
       <div
         style={{
-          fontFamily: "'IBM Plex Mono', monospace",
+          fontFamily: "'Public Sans', sans-serif",
           fontSize: 10, letterSpacing: ".12em",
           color: "hsl(var(--muted-foreground))",
           textTransform: "uppercase", marginBottom: 10,

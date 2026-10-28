@@ -34,7 +34,7 @@ export function LiveWireTicker({ articles }: LiveWireTickerProps) {
       <div
         style={{
           display: "flex", alignItems: "center", gap: 7, marginBottom: 13,
-          fontFamily: '"IBM Plex Mono", monospace',
+          fontFamily: '"Public Sans", sans-serif',
           fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase",
           color: "hsl(var(--primary))",
         }}
@@ -73,7 +73,7 @@ export function LiveWireTicker({ articles }: LiveWireTickerProps) {
           <p
             style={{
               margin: "4px 0 0", fontSize: 10.5,
-              fontFamily: '"IBM Plex Mono", monospace',
+              fontFamily: '"Public Sans", sans-serif',
               color: "rgba(255,255,255,0.45)",
             }}
           >

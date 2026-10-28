@@ -33,10 +33,18 @@ function getLocaleForCountry(countryCode: string): string {
     'OM': 'en-US', // Oman (use US edition for English results)
     'YE': 'en-US', // Yemen (use US edition for English results)
     'AE': 'en-AE', // UAE
+    'TR': 'en-GB', // Turkey (UK edition for English results)
+    'ID': 'en-ID', // Indonesia
+    'PH': 'en-PH', // Philippines
+    'VN': 'en-SG', // Vietnam (Singapore edition for English results)
+    'TH': 'en-SG', // Thailand (Singapore edition for English results)
+    'MY': 'en-MY', // Malaysia
     // North America
     'US': 'en-US', // United States
     'CA': 'en-CA', // Canada
     'MX': 'es-MX', // Mexico
+    'CU': 'en-CA', // Cuba (Canada edition for English results)
+    'JM': 'en-CA', // Jamaica (Canada edition for English results)
     // Europe
     'GB': 'en-GB', // United Kingdom
     'FR': 'fr-FR', // France
@@ -46,8 +54,19 @@ function getLocaleForCountry(countryCode: string): string {
     'NL': 'nl-NL', // Netherlands
     'SE': 'sv-SE', // Sweden
     'PL': 'pl-PL', // Poland
+    'IE': 'en-IE', // Ireland
+    'RU': 'en-GB', // Russia (UK edition for English results)
+    'UA': 'en-GB', // Ukraine
+    'PT': 'en-GB', // Portugal
+    'GR': 'en-GB', // Greece
+    'NO': 'en-GB', // Norway
+    'CH': 'en-GB', // Switzerland
+    'BE': 'en-GB', // Belgium
+    'AT': 'en-GB', // Austria
     // South America — intentionally using 'en' (via fallback) to get English articles
     // Removed Spanish/Portuguese locales: Google News returns English results when hl=en
+    'BO': 'en-GB', // Bolivia (UK edition keeps load off the US edition)
+    'PY': 'en-GB', // Paraguay (UK edition keeps load off the US edition)
     // Africa
     'ZA': 'en-ZA', // South Africa
     'NG': 'en-NG', // Nigeria
@@ -57,6 +76,10 @@ function getLocaleForCountry(countryCode: string): string {
     'MA': 'ar-MA', // Morocco
     'ET': 'en-ET', // Ethiopia
     'TZ': 'en-TZ', // Tanzania
+    'DZ': 'en-GB', // Algeria (UK edition for English results)
+    'SN': 'en-GB', // Senegal (UK edition for English results)
+    'UG': 'en-UG', // Uganda
+    'ZW': 'en-ZW', // Zimbabwe
     // Oceania
     'AU': 'en-AU', // Australia
     'NZ': 'en-NZ', // New Zealand
@@ -106,6 +129,13 @@ type AlertMetrics = {
   renderApiSuccesses: number;
   renderApiFailures: number;
 };
+
+// Circuit-breaker state for flaky/exhausted external image-fetch dependencies.
+// Reset at the top of each request in Deno.serve so a fixed account (e.g. recharged
+// Jina balance) is retried on the very next invocation rather than staying tripped forever.
+let jinaBalanceExhausted = false;
+let togetherServiceDown = false;
+let togetherConsecutiveFailures = 0;
 
 // Helper: simple fetch with retry for transient errors like 429/503
 async function fetchWithRetry(url: string, init: RequestInit = {}, retries = 3, backoffMs = 1000): Promise<Response> {
@@ -162,7 +192,7 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
 
   for (const url of candidates) {
     try {
-      const response = await fetchWithTimeout(url, {
+      const requestInit = {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -171,7 +201,14 @@ async function getGoogleDecodeParams(articleId: string): Promise<{ signature?: s
           // which would otherwise return a cookie-gate page with no decode tokens.
           'Cookie': 'CONSENT=YES+cb; SOCS=CAISNQgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpX3YyMRAdGgJlbiACIgQiAggBOAEqAggB',
         },
-      }, 4000);
+      };
+      let response = await fetchWithTimeout(url, requestInit, 4000);
+      // Google occasionally rate-limits this endpoint (429) under burst load — one short
+      // backoff-and-retry is cheap and recovers the transient case without adding much latency.
+      if (response.status === 429) {
+        await new Promise((r) => setTimeout(r, 700));
+        response = await fetchWithTimeout(url, requestInit, 4000);
+      }
 
       if (!response.ok) continue;
       const html = await response.text();
@@ -483,6 +520,9 @@ async function fetchPublisherImage(publisherUrl: string): Promise<string | null>
  * Set env secret JINA_API_KEY to raise rate limits; keyless works on the free tier.
  */
 async function fetchImageViaRenderApi(targetUrl: string): Promise<string | null> {
+  // Once the account is confirmed out of balance, skip further calls for the rest
+  // of this run — every call would fail anyway and each costs up to 9s of timeout budget.
+  if (jinaBalanceExhausted) return null;
   try {
     const jinaUrl = `https://r.jina.ai/${encodeURIComponent(targetUrl)}`;
     const headers: Record<string, string> = {
@@ -494,12 +534,22 @@ async function fetchImageViaRenderApi(targetUrl: string): Promise<string | null>
     if (jinaApiKey) headers['Authorization'] = `Bearer ${jinaApiKey}`;
 
     const response = await fetchWithTimeout(jinaUrl, { headers }, 9000);
-    if (!response.ok) return null;
+    if (response.status === 402) {
+      jinaBalanceExhausted = true;
+      console.warn('⚠️ Jina Reader API returned 402 (insufficient balance) — skipping further Jina calls this run. Recharge the Jina account to restore this fallback.');
+      return null;
+    }
+    if (!response.ok) {
+      return null;
+    }
     const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('text/html')) return null;
+    if (!contentType.includes('text/html') && !contentType.includes('text/plain')) {
+      return null;
+    }
     const html = await response.text();
-    return extractImageFromHtml(html, targetUrl);
-  } catch {
+    const extracted = extractImageFromHtml(html, targetUrl);
+    return extracted;
+  } catch (e: any) {
     return null;
   }
 }
@@ -517,7 +567,9 @@ async function enrichImagesForArticles(
   const maxCandidates = overrideMaxCandidates !== null
     ? overrideMaxCandidates
     : (Number.isFinite(envMaxCandidates) && envMaxCandidates > 0 ? envMaxCandidates : fallbackMaxCandidates);
-  const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '4');
+  // Lowered from 4 to reduce burst request rate against Google's decode endpoint,
+  // which has been observed rate-limiting (429) this function's egress IP.
+  const concurrency = Number(Deno.env.get('IMAGE_ENRICH_CONCURRENCY') || '2');
 
   // Gate image enrichment to articles within the same 7-day window the feed displays.
   // Widened from 48 h so all displayed articles get a real image when the proxy is set.
@@ -925,7 +977,21 @@ const nonEnglishCountries = new Set([
 
 // Helper: get the gl/ceid country code to use for Google News RSS
 // Non-English countries use US edition so results are in English
+// Countries with no English Google News edition of their own, routed to a non-US
+// English edition. Spreads request load away from the US edition, which the original
+// non-English countries already share (see the NA timeout notes on the category crons).
+const englishEditionFallback: Record<string, string> = {
+  'RU': 'GB', 'UA': 'GB', 'PT': 'GB', 'GR': 'GB', 'NO': 'GB', 'CH': 'GB', 'BE': 'GB', 'AT': 'GB',
+  'TR': 'GB', 'DZ': 'GB', 'SN': 'GB', 'BO': 'GB', 'PY': 'GB',
+  'VN': 'SG', 'TH': 'SG',
+  'CU': 'CA', 'JM': 'CA',
+};
+
 function getGoogleNewsGl(countryCode: string): { gl: string; ceid: string } {
+  const fallback = englishEditionFallback[countryCode];
+  if (fallback) {
+    return { gl: fallback, ceid: `${fallback}:en` };
+  }
   if (nonEnglishCountries.has(countryCode)) {
     return { gl: 'US', ceid: 'US:en' };
   }
@@ -935,17 +1001,17 @@ function getGoogleNewsGl(countryCode: string): { gl: string; ceid: string } {
 // Country code to region mapping
 const countryToRegion: Record<string, string> = {
   // Africa
-  'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa', 'GH': 'Africa', 'MA': 'Africa', 'ET': 'Africa', 'TZ': 'Africa',
+  'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa', 'GH': 'Africa', 'MA': 'Africa', 'ET': 'Africa', 'TZ': 'Africa', 'DZ': 'Africa', 'SN': 'Africa', 'UG': 'Africa', 'ZW': 'Africa',
   // Asia
-  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'IL': 'Asia', 'LK': 'Asia', 'AF': 'Asia', 'QA': 'Asia', 'JO': 'Asia', 'OM': 'Asia', 'YE': 'Asia', 'AE': 'Asia',
+  'IN': 'Asia', 'CN': 'Asia', 'JP': 'Asia', 'SG': 'Asia', 'SA': 'Asia', 'KR': 'Asia', 'PK': 'Asia', 'NP': 'Asia', 'IR': 'Asia', 'SY': 'Asia', 'BD': 'Asia', 'IL': 'Asia', 'LK': 'Asia', 'AF': 'Asia', 'QA': 'Asia', 'JO': 'Asia', 'OM': 'Asia', 'YE': 'Asia', 'AE': 'Asia', 'TR': 'Asia', 'ID': 'Asia', 'PH': 'Asia', 'VN': 'Asia', 'TH': 'Asia', 'MY': 'Asia',
   // Europe
-  'GB': 'Europe', 'FR': 'Europe', 'DE': 'Europe', 'IT': 'Europe', 'ES': 'Europe', 'NL': 'Europe', 'SE': 'Europe', 'PL': 'Europe',
+  'GB': 'Europe', 'FR': 'Europe', 'DE': 'Europe', 'IT': 'Europe', 'ES': 'Europe', 'NL': 'Europe', 'SE': 'Europe', 'PL': 'Europe', 'IE': 'Europe', 'RU': 'Europe', 'UA': 'Europe', 'PT': 'Europe', 'GR': 'Europe', 'NO': 'Europe', 'CH': 'Europe', 'BE': 'Europe', 'AT': 'Europe',
   // North America
-  'US': 'North America', 'CA': 'North America', 'MX': 'North America',
+  'US': 'North America', 'CA': 'North America', 'MX': 'North America', 'CU': 'North America', 'JM': 'North America',
   // Oceania
   'AU': 'Oceania', 'NZ': 'Oceania', 'FJ': 'Oceania', 'PG': 'Oceania',
   // South America
-  'BR': 'South America', 'AR': 'South America', 'CO': 'South America', 'CL': 'South America', 'PE': 'South America', 'VE': 'South America', 'EC': 'South America', 'UY': 'South America',
+  'BR': 'South America', 'AR': 'South America', 'CO': 'South America', 'CL': 'South America', 'PE': 'South America', 'VE': 'South America', 'EC': 'South America', 'UY': 'South America', 'BO': 'South America', 'PY': 'South America',
 };
 
 // Country name keywords (for detecting country from article content)
@@ -980,10 +1046,10 @@ const countryKeywords: Record<string, string[]> = {
 // Note: .co is ambiguous (used by Colombia but also by many international companies)
 // We'll only use it if it's clearly a Colombian domain (ends with .co and not .co.XX)
 const tldToCountry: Record<string, string> = {
-  '.us': 'US', '.ca': 'CA', '.mx': 'MX', '.br': 'BR', '.ar': 'AR', '.cl': 'CL', '.pe': 'PE', '.ve': 'VE', '.ec': 'EC', '.uy': 'UY',
-  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.il': 'IL', '.lk': 'LK', '.af': 'AF', '.qa': 'QA', '.jo': 'JO', '.om': 'OM', '.ye': 'YE', '.ae': 'AE',
-  '.uk': 'GB', '.fr': 'FR', '.de': 'DE', '.it': 'IT', '.es': 'ES', '.nl': 'NL', '.se': 'SE', '.pl': 'PL',
-  '.za': 'ZA', '.ng': 'NG', '.eg': 'EG', '.ke': 'KE', '.gh': 'GH', '.ma': 'MA', '.et': 'ET', '.tz': 'TZ',
+  '.us': 'US', '.ca': 'CA', '.mx': 'MX', '.br': 'BR', '.ar': 'AR', '.cl': 'CL', '.pe': 'PE', '.ve': 'VE', '.ec': 'EC', '.uy': 'UY', '.cu': 'CU', '.jm': 'JM', '.bo': 'BO', '.py': 'PY',
+  '.in': 'IN', '.cn': 'CN', '.jp': 'JP', '.sg': 'SG', '.sa': 'SA', '.kr': 'KR', '.pk': 'PK', '.np': 'NP', '.ir': 'IR', '.sy': 'SY', '.bd': 'BD', '.il': 'IL', '.lk': 'LK', '.af': 'AF', '.qa': 'QA', '.jo': 'JO', '.om': 'OM', '.ye': 'YE', '.ae': 'AE', '.tr': 'TR', '.id': 'ID', '.ph': 'PH', '.vn': 'VN', '.th': 'TH', '.my': 'MY',
+  '.uk': 'GB', '.fr': 'FR', '.de': 'DE', '.it': 'IT', '.es': 'ES', '.nl': 'NL', '.se': 'SE', '.pl': 'PL', '.ie': 'IE', '.ru': 'RU', '.ua': 'UA', '.pt': 'PT', '.gr': 'GR', '.no': 'NO', '.ch': 'CH', '.be': 'BE', '.at': 'AT',
+  '.za': 'ZA', '.ng': 'NG', '.eg': 'EG', '.ke': 'KE', '.gh': 'GH', '.ma': 'MA', '.et': 'ET', '.tz': 'TZ', '.dz': 'DZ', '.sn': 'SN', '.ug': 'UG', '.zw': 'ZW',
   '.au': 'AU', '.nz': 'NZ', '.fj': 'FJ', '.pg': 'PG',
   // Colombia - only match if it's .co and NOT .co.XX (which would be a subdomain)
   // We'll handle .co specially in the detection function
@@ -1051,6 +1117,10 @@ const regionConfigs: RegionConfig[] = [
       { code: 'MA', name: 'Morocco' },
       { code: 'ET', name: 'Ethiopia' },
       { code: 'TZ', name: 'Tanzania' },
+      { code: 'DZ', name: 'Algeria' },
+      { code: 'SN', name: 'Senegal' },
+      { code: 'UG', name: 'Uganda' },
+      { code: 'ZW', name: 'Zimbabwe' },
     ]
   },
   {
@@ -1075,6 +1145,12 @@ const regionConfigs: RegionConfig[] = [
       { code: 'OM', name: 'Oman' },
       { code: 'YE', name: 'Yemen' },
       { code: 'AE', name: 'United Arab Emirates' },
+      { code: 'TR', name: 'Turkey' },
+      { code: 'ID', name: 'Indonesia' },
+      { code: 'PH', name: 'Philippines' },
+      { code: 'VN', name: 'Vietnam' },
+      { code: 'TH', name: 'Thailand' },
+      { code: 'MY', name: 'Malaysia' },
     ]
   },
   {
@@ -1088,6 +1164,15 @@ const regionConfigs: RegionConfig[] = [
       { code: 'NL', name: 'Netherlands' },
       { code: 'SE', name: 'Sweden' },
       { code: 'PL', name: 'Poland' },
+      { code: 'IE', name: 'Ireland' },
+      { code: 'RU', name: 'Russia' },
+      { code: 'UA', name: 'Ukraine' },
+      { code: 'PT', name: 'Portugal' },
+      { code: 'GR', name: 'Greece' },
+      { code: 'NO', name: 'Norway' },
+      { code: 'CH', name: 'Switzerland' },
+      { code: 'BE', name: 'Belgium' },
+      { code: 'AT', name: 'Austria' },
     ]
   },
   {
@@ -1096,6 +1181,8 @@ const regionConfigs: RegionConfig[] = [
       { code: 'US', name: 'United States' },
       { code: 'CA', name: 'Canada' },
       { code: 'MX', name: 'Mexico' },
+      { code: 'CU', name: 'Cuba' },
+      { code: 'JM', name: 'Jamaica' },
     ]
   },
   {
@@ -1118,6 +1205,8 @@ const regionConfigs: RegionConfig[] = [
       { code: 'VE', name: 'Venezuela' },
       { code: 'EC', name: 'Ecuador' },
       { code: 'UY', name: 'Uruguay' },
+      { code: 'BO', name: 'Bolivia' },
+      { code: 'PY', name: 'Paraguay' },
     ]
   },
 ];
@@ -1894,23 +1983,44 @@ async function generateAiImageForBackfill(
     (ctx ? `Context: "${ctx}". ` : '') +
     `Style: flat editorial graphic, limited palette, clean composition.`;
 
-  const genRes = await fetch('https://api.together.xyz/v1/images/generations', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${togetherKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'black-forest-labs/FLUX.1-schnell',
-      prompt,
-      width: 1024,
-      height: 576,
-      steps: 4,
-      n: 1,
-      response_format: 'b64_json',
-    }),
-  });
-  if (!genRes.ok) {
-    console.warn(`⚠️ Together AI error ${genRes.status} for article ${articleId}`);
+  if (togetherServiceDown) return null;
+
+  let genRes: Response;
+  try {
+    // Together's image endpoint has been seen returning transient 429/503 — a couple of
+    // short retries recovers those without much added latency per article.
+    // FLUX.1-schnell was moved behind a paid dedicated-endpoint requirement by Together AI
+    // (confirmed via live 400 model_not_available) — FLUX.2-dev is its serverless-tier
+    // successor and was confirmed working via a live probe of Together's current model list.
+    genRes = await fetchWithRetry('https://api.together.xyz/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${togetherKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'black-forest-labs/FLUX.2-dev',
+        prompt,
+        width: 1024,
+        height: 576,
+        steps: 4,
+        n: 1,
+        response_format: 'b64_json',
+      }),
+    }, 2, 800);
+  } catch (e) {
+    console.warn(`⚠️ Together AI request failed for article ${articleId}:`, e);
     return null;
   }
+  if (!genRes.ok) {
+    console.warn(`⚠️ Together AI error ${genRes.status} for article ${articleId}`);
+    // Trip the breaker after repeated failures within this run so the remaining
+    // candidates in the batch don't each burn multiple retries against a dead endpoint.
+    togetherConsecutiveFailures += 1;
+    if (togetherConsecutiveFailures >= 3) {
+      togetherServiceDown = true;
+      console.warn('⚠️ Together AI failed 3 times in a row — skipping further AI-image calls this run.');
+    }
+    return null;
+  }
+  togetherConsecutiveFailures = 0;
 
   const b64 = (await genRes.json())?.data?.[0]?.b64_json;
   if (!b64) return null;
@@ -2163,6 +2273,12 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Reset per-run circuit-breaker state so a since-fixed account (e.g. recharged
+  // Jina balance) is retried on the very next invocation rather than staying tripped.
+  jinaBalanceExhausted = false;
+  togetherServiceDown = false;
+  togetherConsecutiveFailures = 0;
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -2196,6 +2312,7 @@ Deno.serve(async (req) => {
     console.log('📥 Raw request body:', JSON.stringify(requestBody));
 
     const { category, region, country, limit, backfillImages, clearGoogleImages } = requestBody || { category: null, region: null, country: null, limit: 12, backfillImages: false, clearGoogleImages: false };
+
 
     if (clearGoogleImages === true) {
       const tables = ['articles_africa','articles_asia','articles_europe','articles_north_america','articles_oceania','articles_south_america'];

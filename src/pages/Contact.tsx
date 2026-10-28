@@ -14,7 +14,7 @@ function PageHeader() {
     }}>
       <Link to="/" style={{ display: "flex", alignItems: "baseline", gap: 8, textDecoration: "none" }}>
         <span style={{ width: 10, height: 10, background: "hsl(var(--primary))", display: "inline-block" }} />
-        <span style={{ fontFamily: "'Newsreader', serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
+        <span style={{ fontFamily: "Newsreader, serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
           Snew<span style={{ color: "hsl(var(--primary))" }}>.</span>
         </span>
       </Link>
@@ -30,7 +30,7 @@ const Contact = () => (
     <PageHeader />
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "54px 28px 90px" }}>
       <div style={{
-        fontFamily: "'IBM Plex Mono', monospace",
+        fontFamily: "'Public Sans', sans-serif",
         fontSize: 10, letterSpacing: ".16em",
         color: "hsl(var(--accent-ink))",
         textTransform: "uppercase", marginBottom: 16,
@@ -38,7 +38,7 @@ const Contact = () => (
         Contact
       </div>
       <h1 style={{
-        fontFamily: "'Newsreader', serif",
+        fontFamily: "Newsreader, serif",
         fontWeight: 600, fontSize: 42,
         lineHeight: 1.08, letterSpacing: "-.02em",
         margin: "0 0 24px", color: "hsl(var(--foreground))",
@@ -59,7 +59,7 @@ const Contact = () => (
           borderRadius: 6,
         }}>
           <div style={{
-            fontFamily: "'IBM Plex Mono', monospace",
+            fontFamily: "'Public Sans', sans-serif",
             fontSize: 10, letterSpacing: ".1em",
             color: "hsl(var(--muted-foreground))",
             textTransform: "uppercase", marginBottom: 8,
@@ -76,7 +76,7 @@ const Contact = () => (
           borderRadius: 6,
         }}>
           <div style={{
-            fontFamily: "'IBM Plex Mono', monospace",
+            fontFamily: "'Public Sans', sans-serif",
             fontSize: 10, letterSpacing: ".1em",
             color: "hsl(var(--muted-foreground))",
             textTransform: "uppercase", marginBottom: 8,

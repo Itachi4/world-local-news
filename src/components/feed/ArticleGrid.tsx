@@ -181,9 +181,8 @@ export function ArticleGrid({
         <div
           style={{
             position: "fixed", bottom: 24, right: 24, zIndex: 50,
-            background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
+            background: "hsl(var(--secondary))", border: "2px solid hsl(var(--primary))",
             borderRadius: "var(--radius)", padding: "10px 16px",
-            boxShadow: "0 4px 24px hsl(var(--shadow))",
             display: "flex", alignItems: "center", gap: 10,
             fontSize: 13.5, fontWeight: 500,
           }}

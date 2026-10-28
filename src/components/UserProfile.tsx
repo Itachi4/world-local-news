@@ -43,6 +43,17 @@ const AccountPage = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  // Shares the same localStorage key as the main feed so the text-size choice
+  // carries across pages.
+  const [fontScale, setFontScale] = useState(() => {
+    const saved = Number(window.localStorage.getItem("preferred_font_scale") || "100");
+    return [90, 100, 112].includes(saved) ? saved : 100;
+  });
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${fontScale}%`;
+    window.localStorage.setItem("preferred_font_scale", String(fontScale));
+  }, [fontScale]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -121,15 +132,14 @@ const AccountPage = () => {
         onToggleSearch={() => {}}
         searchQuery=""
         onSearchChange={() => {}}
-        onFontDown={() => {}}
-        onFontReset={() => {}}
-        onFontUp={() => {}}
+        fontScale={fontScale}
+        onFontScaleChange={setFontScale}
       />
 
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "46px 28px 80px" }}>
         <h1
           style={{
-            fontFamily: "'Newsreader', serif",
+            fontFamily: "Newsreader, serif",
             fontWeight: 600, fontSize: 32,
             letterSpacing: "-.015em",
             margin: "0 0 26px",
@@ -155,7 +165,7 @@ const AccountPage = () => {
               background: "hsl(var(--primary))",
               color: "#fff",
               display: "grid", placeItems: "center",
-              fontFamily: "'Newsreader', serif",
+              fontFamily: "Newsreader, serif",
               fontWeight: 600, fontSize: 25,
               flexShrink: 0,
             }}
@@ -163,7 +173,7 @@ const AccountPage = () => {
             {initials}
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "'Newsreader', serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
+            <div style={{ fontFamily: "Newsreader, serif", fontWeight: 600, fontSize: 22, color: "hsl(var(--foreground))" }}>
               {user.user_metadata?.full_name || "Account"}
             </div>
             <div style={{ fontSize: 13.5, color: "hsl(var(--muted-foreground))" }}>

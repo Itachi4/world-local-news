@@ -12,7 +12,7 @@ interface FilterBarProps {
 }
 
 const monoLabel: React.CSSProperties = {
-  fontFamily: '"IBM Plex Mono", monospace',
+  fontFamily: '"Public Sans", sans-serif',
   fontSize: 10,
   letterSpacing: "0.14em",
   color: "hsl(var(--muted-foreground))",

@@ -55,7 +55,7 @@ export function FeedTabs({
       <span
         style={{
           fontSize: 12,
-          fontFamily: '"IBM Plex Mono", monospace',
+          fontFamily: '"Public Sans", sans-serif',
           color: "hsl(var(--muted-foreground))",
           paddingRight: 4,
         }}

@@ -14,10 +14,13 @@ export default {
     },
     extend: {
       fontFamily: {
-        // Editorial type system from the design
+        // "Serene Editorial" type system: Newsreader for display/headlines,
+        // Source Serif 4 for editorial longform body copy, Public Sans for
+        // interface/labels/nav. No monospace anywhere in this system.
         serif: ["Newsreader", "Georgia", "Cambria", "serif"],
-        sans:  ['"IBM Plex Sans"', "system-ui", "-apple-system", "sans-serif"],
-        mono:  ['"IBM Plex Mono"', '"Courier New"', "monospace"],
+        "body-serif": ["'Source Serif 4'", "Georgia", "serif"],
+        sans: ["'Public Sans'", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        mono: ['"IBM Plex Mono"', '"Courier New"', "monospace"],
       },
       colors: {
         // shadcn/ui semantic tokens
@@ -46,6 +49,11 @@ export default {
           DEFAULT:    "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        tertiary: {
+          DEFAULT:    "hsl(var(--tertiary))",
+          foreground: "hsl(0 0% 100%)",
+        },
+        terracotta: "hsl(var(--terracotta))",
         popover: {
           DEFAULT:    "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",

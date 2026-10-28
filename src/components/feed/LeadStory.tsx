@@ -54,18 +54,10 @@ export function LeadStory({
   };
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1.55fr 1fr",
-        gap: 22,
-        marginBottom: 36,
-        alignItems: "start",
-      }}
-    >
+    <div className="mb-9 grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.55fr_1fr] lg:gap-5">
       {/* ArticleCard handles its own AI image generation */}
       <ArticleCard {...cardProps(lead)} isLead />
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="flex flex-col gap-4">
         {secondary.map((article) => (
           <ArticleCard key={article.id} {...cardProps(article)} />
         ))}

@@ -3,133 +3,96 @@
 @tailwind utilities;
 
 /*
- * Design system — "Editorial Newspaper Wire"
+ * Design system — "Serene Editorial" (adopted from the Stitch design brief
+ * in stitch_snew_global_wire_landing_page/DESIGN.md).
  * All color tokens are bare HSL triples consumed as hsl(var(--token)).
- * OKLCH source values are noted in comments for future reference.
  *
- * Token map (shadcn ↔ editorial):
- *   --background    = paper (page bg)
- *   --foreground    = ink   (primary text)
- *   --card          = surface
- *   --secondary     = surface-2 (also --muted)
- *   --primary       = terracotta accent (buttons, links, active states)
- *   --accent        = surface-2 (shadcn hover bg — kept NEUTRAL, NOT terracotta)
+ * Replaces the earlier "Global Wire" (cool-neutral / electric-blue) identity
+ * with a warm, low-glare, accessibility-first editorial read: warm parchment
+ * neutrals, a navy primary, and a terracotta secondary accent, paired with
+ * Newsreader (display), Source Serif 4 (editorial longform body), and Public
+ * Sans (interface/labels) — see tailwind.config.ts.
+ *
+ * Light-only by design: the source brief is explicitly built to avoid
+ * dark-mode glare for low-vision/elderly readers, so there is no .dark block.
+ *
+ * Depth is communicated with borders (tonal layering), not drop shadows —
+ * see the "Elevation" note above .sn-card below.
+ *
+ * Token map (shadcn ↔ site):
+ *   --background    = parchment page bg
+ *   --foreground    = primary text
+ *   --card          = tier-1 surface (cards, panels — more tinted than bg)
+ *   --secondary     = tier-2 surface (inputs at rest, callouts; also --muted)
+ *   --primary       = navy accent (buttons, links, active states)
+ *   --terracotta    = breaking-news / alert accent (NOT the shadcn "secondary")
+ *   --accent        = surface-2 (shadcn hover bg — neutral, not an accent color)
  *   --border/--input = line
- *   --ring          = terracotta (same as --primary)
+ *   --ring          = navy (same as --primary)
  */
 
 @layer base {
   :root {
-    /* ── Core palette (light) ─────────────────────────── */
-    --background:  40 25% 99%;    /* paper  oklch(0.992 0.003 80) */
-    --foreground:  40 10% 11%;    /* ink    oklch(0.22  0.012 60) */
+    /* ── Core palette ──────────────────────────────────── */
+    --background:  40 45% 97%;    /* warm parchment #FBF9F5 */
+    --foreground:  217 18% 14%;   /* #1E232B */
 
-    --card:         0  0% 100%;   /* surface oklch(1 0 0)         */
-    --card-foreground: 40 10% 11%;
+    --card:         33 27% 94%;   /* #F3EFEA — tier-1 surface */
+    --card-foreground: 217 18% 14%;
 
-    --popover:      0  0% 100%;
-    --popover-foreground: 40 10% 11%;
+    --popover:      33 27% 94%;
+    --popover-foreground: 217 18% 14%;
 
-    --primary:     15 58% 44%;    /* terracotta oklch(0.55 0.17 33) */
-    --primary-foreground: 0 0% 100%;
+    --primary:     215 66% 30%;   /* navy #1A4480 */
+    --primary-foreground: 40 45% 97%;
 
-    --secondary:   40 20% 97%;    /* surface-2 oklch(0.975 0.004 80) */
-    --secondary-foreground: 40 10% 11%;
+    --secondary:   34 25% 89%;    /* #EAE4DC — tier-2 surface */
+    --secondary-foreground: 217 18% 14%;
 
-    --muted:       40 20% 97%;
-    --muted-foreground: 42 5% 52%; /* ink-3 oklch(0.58 0.01 65) */
+    --muted:       34 25% 89%;
+    --muted-foreground: 215 12% 31%;  /* #464E59 */
 
-    /* shadcn accent = neutral hover surface (NOT the editorial terracotta) */
-    --accent:       40 20% 97%;
-    --accent-foreground: 40 10% 11%;
+    /* shadcn accent = neutral hover surface (NOT the terracotta accent) */
+    --accent:       34 25% 89%;
+    --accent-foreground: 217 18% 14%;
 
     --destructive:  0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border:      45 8% 88%;     /* line  oklch(0.905 0.005 75) */
-    --input:       40 20% 97%;    /* field = surface-2           */
-    --ring:        15 58% 44%;    /* same as --primary            */
+    --border:      40 18% 84%;    /* #DDD8CE structural border */
+    --input:       0 0% 100%;     /* text inputs are pure white, per spec, for contrast against parchment */
+    --ring:        215 66% 30%;   /* same as --primary */
 
-    --radius: 0.25rem;            /* sharp editorial corners      */
-
-    /* ── Sidebar (kept neutral to match new palette) ──── */
-    --sidebar-background: 40 20% 98%;
-    --sidebar-foreground: 40 10% 22%;
-    --sidebar-primary: 15 58% 44%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 40 20% 95%;
-    --sidebar-accent-foreground: 40 10% 22%;
-    --sidebar-border: 45 8% 88%;
-    --sidebar-ring: 15 58% 44%;
-
-    /* ── Editorial extras (not in shadcn, used by new components) */
-    --surface-2:    40 20% 97%;   /* oklch(0.975 0.004 80) */
-    --ink-2:        40  6% 36%;   /* oklch(0.43  0.012 60) */
-    --ink-3:        42  5% 52%;   /* oklch(0.58  0.01  65) */
-    --line-2:       45  7% 78%;   /* oklch(0.83  0.006 75) */
-    --accent-ink:   15 58% 40%;   /* oklch(0.5   0.17  33) darker terracotta */
-    --accent-wash:  22 55% 93%;   /* oklch(0.95  0.04  40) very light terracotta */
-    --field:        40 20% 97%;   /* same as surface-2     */
-    --shadow: 0 1px 2px rgba(40,30,20,.06),0 12px 28px -12px rgba(40,30,20,.18);
-
-    /* ── Region colors (theme-independent values live here; used for badges) */
-    --rg-africa:        38 50% 52%;   /* oklch(0.62 0.13 72)  amber/gold  */
-    --rg-asia:          10 60% 47%;   /* oklch(0.6  0.16 25)  red-orange  */
-    --rg-europe:       220 40% 50%;   /* oklch(0.6  0.1 252)  blue        */
-    --rg-north-america:185 35% 47%;   /* oklch(0.6  0.09 195) teal        */
-    --rg-oceania:      280 40% 50%;   /* oklch(0.6  0.13 305) purple      */
-    --rg-south-america:140 40% 45%;   /* oklch(0.57 0.13 150) green       */
-  }
-
-  .dark {
-    /* ── Core palette (dark) ──────────────────────────── */
-    --background:  40  6% 13%;    /* paper  oklch(0.175 0.008 60) */
-    --foreground:  45 12% 95%;    /* ink    oklch(0.955 0.006 85) */
-
-    --card:        40  5% 17%;    /* surface oklch(0.215 0.009 60) */
-    --card-foreground: 45 12% 95%;
-
-    --popover:     40  5% 17%;
-    --popover-foreground: 45 12% 95%;
-
-    --primary:     22 65% 60%;    /* terracotta oklch(0.7 0.16 40) */
-    --primary-foreground: 0 0% 100%;
-
-    --secondary:   40  5% 19%;    /* surface-2 oklch(0.235 0.01 60) */
-    --secondary-foreground: 45 12% 95%;
-
-    --muted:       40  5% 19%;
-    --muted-foreground: 40  5% 54%; /* ink-3 oklch(0.6 0.008 70) */
-
-    --accent:      40  5% 19%;    /* neutral hover */
-    --accent-foreground: 45 12% 95%;
-
-    --destructive:  0 63% 31%;
-    --destructive-foreground: 45 12% 95%;
-
-    --border:      40  5% 25%;    /* line  oklch(0.305 0.01 60) */
-    --input:       40  5% 19%;    /* field = surface-2          */
-    --ring:        22 65% 60%;
+    --radius: 0.25rem;
 
     /* ── Sidebar ──────────────────────────────────────── */
-    --sidebar-background: 40 6% 15%;
-    --sidebar-foreground: 45 12% 92%;
-    --sidebar-primary: 22 65% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 40 5% 20%;
-    --sidebar-accent-foreground: 45 12% 92%;
-    --sidebar-border: 40 5% 25%;
-    --sidebar-ring: 22 65% 60%;
+    --sidebar-background: 33 27% 94%;
+    --sidebar-foreground: 217 15% 22%;
+    --sidebar-primary: 215 66% 30%;
+    --sidebar-primary-foreground: 40 45% 97%;
+    --sidebar-accent: 34 25% 89%;
+    --sidebar-accent-foreground: 217 15% 22%;
+    --sidebar-border: 40 18% 84%;
+    --sidebar-ring: 215 66% 30%;
 
-    /* ── Editorial extras ─────────────────────────────── */
-    --surface-2:    40  5% 19%;
-    --ink-2:        42  6% 72%;   /* oklch(0.78 0.008 78) */
-    --ink-3:        40  5% 54%;   /* oklch(0.6  0.008 70) */
-    --line-2:       40  5% 32%;   /* oklch(0.37 0.011 60) */
-    --accent-ink:   24 62% 64%;   /* oklch(0.74 0.15 40)  */
-    --accent-wash:  22 28% 22%;   /* oklch(0.3  0.06 40)  */
-    --field:        40  5% 19%;
-    --shadow: 0 1px 2px rgba(0,0,0,.4),0 16px 36px -14px rgba(0,0,0,.6);
+    /* ── Site extras (not in shadcn, used by feed components) */
+    --surface-2:    34 25% 89%;
+    --ink-2:        217 15% 22%;
+    --ink-3:        215 10% 40%;
+    --line-2:       40 15% 72%;
+    --accent-ink:   215 70% 24%;   /* darker navy, for link text */
+    --accent-wash:  215 50% 95%;   /* very light navy wash */
+    --field:        0 0% 100%;     /* same as --input */
+    --terracotta:   20 55% 46%;    /* #C85A32 — breaking-news / alert accent only, never the primary action color */
+    --tertiary:     161 20% 33%;   /* #43655A sage/pine — success / verified accent */
+
+    /* ── Region colors — tuned for 4.5:1+ against the warm parchment bg/card. */
+    --rg-africa:        42 55% 40%;
+    --rg-asia:          350 55% 46%;
+    --rg-europe:        195 45% 32%;
+    --rg-north-america: 330 42% 46%;
+    --rg-oceania:       100 35% 34%;
+    --rg-south-america: 150 40% 34%;
   }
 }
 
@@ -204,11 +167,17 @@
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
-  .hover-lift { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-  .hover-lift:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -10px hsl(var(--primary) / 0.25); }
-  .hover-glow:hover { box-shadow: 0 0 30px hsl(var(--primary) / 0.3); }
+  .hover-lift { transition: border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+  .hover-lift:hover { border-color: hsl(var(--primary)); }
+  .hover-glow:hover { border-color: hsl(var(--primary)); }
   .transition-smooth { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
   .transition-bounce { transition: all 0.2s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+
+  /* Reserve for italic display type so descenders (y g j p q) don't clip. */
+  .sn-italic-safe {
+    line-height: 1.15;
+    padding-bottom: 0.15em;
+  }
 
   /* Scrollbar — warm editorial tone */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -244,8 +213,33 @@
     border-color: hsl(var(--primary));
   }
 
+  /* Article cards — border-weight shift on hover/press, not a drop shadow.
+     Depth in this system comes from tonal layering + structural framing
+     (DESIGN.md "Elevation & Depth"), so no transform/box-shadow here. */
+  .sn-card {
+    border-width: 1.5px;
+    transition: border-color 180ms ease, border-width 180ms ease;
+  }
+  .sn-card:hover {
+    border-color: hsl(var(--primary) / 0.55);
+  }
+  .sn-card:active {
+    border-color: hsl(var(--primary));
+    border-width: 2px;
+  }
+
+  /* Site-wide focus ring — double-ring outline per DESIGN.md's
+     "Focus & Hover Signaling" spec, distinct from any component's
+     own explicit focus handling (this is the base default only). */
+  :focus-visible {
+    outline: 2px solid hsl(var(--background));
+    outline-offset: 1px;
+    box-shadow: 0 0 0 3px hsl(var(--primary));
+    border-radius: 2px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .sn-tab, .sn-chip, .sn-select, .animate-sn-up, .loading-shimmer {
+    .sn-tab, .sn-chip, .sn-select, .sn-card, .animate-sn-up, .loading-shimmer {
       animation-duration: 0.001ms !important;
       transition-duration: 0.001ms !important;
     }

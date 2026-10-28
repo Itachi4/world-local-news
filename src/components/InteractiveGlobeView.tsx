@@ -179,10 +179,10 @@ export function InteractiveGlobeView({
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
           <span style={{ width: 10, height: 10, background: "hsl(var(--primary))", display: "inline-block" }} />
-          <span style={{ fontFamily: "'Newsreader', serif", fontWeight: 600, fontSize: 21, color: "#fff" }}>
+          <span style={{ fontFamily: "Newsreader, serif", fontWeight: 600, fontSize: 21, color: "#fff" }}>
             Snew<span style={{ color: "hsl(var(--primary))" }}>.</span>
           </span>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, letterSpacing: ".2em", color: "rgba(255,255,255,.45)", textTransform: "uppercase" }}>
+          <span style={{ fontFamily: "'Public Sans', sans-serif", fontSize: 9.5, letterSpacing: ".2em", color: "rgba(255,255,255,.45)", textTransform: "uppercase" }}>
             Globe&nbsp;View
           </span>
         </div>
@@ -277,7 +277,7 @@ export function InteractiveGlobeView({
             />
             <div
               style={{
-                fontFamily: "'IBM Plex Mono', monospace",
+                fontFamily: "'Public Sans', sans-serif",
                 fontSize: 12, letterSpacing: ".05em",
                 color: "rgba(255,255,255,.6)",
               }}
@@ -292,7 +292,7 @@ export function InteractiveGlobeView({
       <div
         style={{
           position: "absolute", left: 28, bottom: 26, zIndex: 5,
-          fontFamily: "'IBM Plex Mono', monospace", fontSize: 11,
+          fontFamily: "'Public Sans', sans-serif", fontSize: 11,
           color: "rgba(255,255,255,.5)", lineHeight: 1.7,
           pointerEvents: "none",
         }}
@@ -334,7 +334,7 @@ export function InteractiveGlobeView({
                       borderRadius: 2,
                       background: rColor + "22",
                       color: rColor,
-                      fontFamily: "'IBM Plex Mono', monospace",
+                      fontFamily: "'Public Sans', sans-serif",
                     }}
                   >
                     {selectedCountryMeta.region}
@@ -342,7 +342,7 @@ export function InteractiveGlobeView({
                 )}
                 <span
                   style={{
-                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontFamily: "'Public Sans', sans-serif",
                     fontSize: 11, color: "hsl(var(--muted-foreground))",
                   }}
                 >
@@ -351,7 +351,7 @@ export function InteractiveGlobeView({
               </div>
               <h3
                 style={{
-                  fontFamily: "'Newsreader', serif",
+                  fontFamily: "Newsreader, serif",
                   fontWeight: 600, fontSize: 27, margin: 0,
                   letterSpacing: "-.01em",
                   color: "hsl(var(--foreground))",
@@ -397,7 +397,7 @@ export function InteractiveGlobeView({
                 />
                 <div
                   style={{
-                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontFamily: "'Public Sans', sans-serif",
                     fontSize: 12, color: "hsl(var(--muted-foreground))",
                   }}
                 >
@@ -431,7 +431,7 @@ export function InteractiveGlobeView({
                     {article.category && (
                       <span
                         style={{
-                          fontFamily: "'IBM Plex Mono', monospace",
+                          fontFamily: "'Public Sans', sans-serif",
                           fontSize: 10, color: "hsl(var(--accent-ink))",
                           textTransform: "uppercase",
                         }}
@@ -441,7 +441,7 @@ export function InteractiveGlobeView({
                     )}
                     <span
                       style={{
-                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontFamily: "'Public Sans', sans-serif",
                         fontSize: 10, color: "hsl(var(--muted-foreground))",
                       }}
                     >
@@ -450,7 +450,7 @@ export function InteractiveGlobeView({
                   </div>
                   <h4
                     style={{
-                      fontFamily: "'Newsreader', serif",
+                      fontFamily: "Newsreader, serif",
                       fontWeight: 600, fontSize: 18,
                       lineHeight: 1.2, margin: "0 0 6px",
                       color: "hsl(var(--foreground))",
