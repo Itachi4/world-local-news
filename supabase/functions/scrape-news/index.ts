@@ -209,30 +209,89 @@ function needsTranslation(text: string | null | undefined): boolean {
   return foreign > english;
 }
 
+// Free endpoints, tried in order. Google rate-limits some hosts (429) from Supabase's egress
+// IPs, so a provider that keeps failing is skipped for the rest of the run and the next one
+// takes over.
+type TranslateProvider = { name: string; translate: (text: string) => Promise<string | null> };
+
+async function fetchTranslateJson(url: string): Promise<any> {
+  const res = await fetchWithTimeout(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36' },
+  }, 5000);
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  return await res.json();
+}
+
+const joinGtxSegments = (data: any) => (data?.[0] || []).map((seg: any[]) => seg?.[0] || '').join('').trim();
+
+function guessSourceLang(text: string): string {
+  if (/[؀-ۿ]/.test(text)) return 'ar';
+  if (/[Ѐ-ӿ]/.test(text)) return 'ru';
+  if (/[฀-๿]/.test(text)) return 'th';
+  if (/[぀-ヿ]/.test(text)) return 'ja';
+  if (/[가-힯]/.test(text)) return 'ko';
+  if (/[㐀-鿿]/.test(text)) return 'zh';
+  return 'Autodetect';
+}
+
+const TRANSLATE_PROVIDERS: TranslateProvider[] = [
+  {
+    name: 'googleapis-gtx',
+    translate: async (text) => joinGtxSegments(await fetchTranslateJson(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`)) || null,
+  },
+  {
+    name: 'clients5-dict',
+    translate: async (text) => {
+      const data = await fetchTranslateJson(
+        `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=en&q=${encodeURIComponent(text)}`);
+      const first = data?.[0];
+      return (Array.isArray(first) ? first[0] : first)?.trim() || null;
+    },
+  },
+  {
+    name: 'google-gtx',
+    translate: async (text) => joinGtxSegments(await fetchTranslateJson(
+      `https://translate.google.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`)) || null,
+  },
+  {
+    name: 'mymemory',
+    translate: async (text) => {
+      const data = await fetchTranslateJson(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 480))}&langpair=${guessSourceLang(text)}|en`);
+      if (data?.quotaFinished || Number(data?.responseStatus) !== 200) throw new Error(`mymemory ${data?.responseStatus}`);
+      return data?.responseData?.translatedText?.trim() || null;
+    },
+  },
+];
+
 let translateServiceDown = false;
-let translateConsecutiveFailures = 0;
+let translateProviderFailures: Record<string, number> = {};
+let translateLastError: string | null = null;
+let translateProviderUsed: Record<string, number> = {};
 
 async function translateToEnglish(text: string): Promise<string | null> {
   if (translateServiceDown) return null;
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text.slice(0, 1500))}`;
-    const res = await fetchWithTimeout(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36' },
-    }, 5000);
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const data = await res.json();
-    const translated = (data?.[0] || []).map((seg: any[]) => seg?.[0] || '').join('').trim();
-    translateConsecutiveFailures = 0;
-    return translated || null;
-  } catch (e) {
-    translateConsecutiveFailures += 1;
-    if (translateConsecutiveFailures >= 5) {
-      translateServiceDown = true;
-      console.warn('⚠️ Translation failed 5 times in a row — skipping further translations this run.');
+  const input = text.slice(0, 1500);
+  for (const provider of TRANSLATE_PROVIDERS) {
+    if ((translateProviderFailures[provider.name] || 0) >= 3) continue;
+    try {
+      const translated = await provider.translate(input);
+      if (!translated) throw new Error('empty result');
+      translateProviderFailures[provider.name] = 0;
+      translateProviderUsed[provider.name] = (translateProviderUsed[provider.name] || 0) + 1;
+      return translated;
+    } catch (e) {
+      translateProviderFailures[provider.name] = (translateProviderFailures[provider.name] || 0) + 1;
+      translateLastError = `${provider.name}: ${String((e as any)?.message || e)}`;
+      console.warn(`⚠️ Translation via ${provider.name} failed:`, e);
     }
-    console.warn('⚠️ Translation failed:', e);
-    return null;
   }
+  if (TRANSLATE_PROVIDERS.every((p) => (translateProviderFailures[p.name] || 0) >= 3)) {
+    translateServiceDown = true;
+    console.warn('⚠️ All translation providers failing — skipping further translations this run.');
+  }
+  return null;
 }
 
 /** Translates title/snippet/source_name in place where they look non-English. Returns count changed. */
@@ -304,7 +363,7 @@ async function runTranslateExistingMode(supabase: any, requestBody: any): Promis
     }
     summary[table] = updated;
   }
-  return new Response(JSON.stringify({ success: true, mode: 'translateExisting', updated: summary }), {
+  return new Response(JSON.stringify({ success: true, mode: 'translateExisting', updated: summary, translateServiceDown, translateProviderUsed, translateLastError }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     status: 200,
   });
@@ -2447,7 +2506,9 @@ Deno.serve(async (req) => {
   togetherServiceDown = false;
   togetherConsecutiveFailures = 0;
   translateServiceDown = false;
-  translateConsecutiveFailures = 0;
+  translateProviderFailures = {};
+  translateProviderUsed = {};
+  translateLastError = null;
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
