@@ -67,7 +67,7 @@ export function RegionSnapshot({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
             gap: 22,
           }}
         >
@@ -88,7 +88,7 @@ export function RegionSnapshot({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
             gap: 22,
           }}
         >

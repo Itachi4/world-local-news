@@ -180,7 +180,9 @@ const Index = ({ user }: IndexProps) => {
     articleId: "",
     title: "",
   });
-  const ARTICLES_PER_PAGE = 10;
+  // 12 = 3 lead stories + 9 grid cards: fills the 3-column grid exactly, and every
+  // "load more" page (12) keeps the rows full.
+  const ARTICLES_PER_PAGE = 12;
   const { toast } = useToast();
   const prefetchingRef = useRef(false);
 
